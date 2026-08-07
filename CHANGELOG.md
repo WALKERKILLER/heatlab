@@ -5,6 +5,9 @@
 ## [Unreleased]
 
 ### Fixed
+- 图注特殊符号（上标/下标）改用 mathtext 渲染，消除缺字形方框乱码
+- 修复 pyproject.toml 元数据（dependencies 误置于 project.urls），GitHub Actions 恢复通过
+- 提交历史作者统一为仓库所有者本人
 - 桌面 Matplotlib 图注/图例/坐标轴在深色背景下使用浅色文字，避免黑字看不清
 - 图例文字改为纯白并放大到 11pt；优先使用常规字重中文字体（Droid Sans Fallback），避免细体小字在深色底上难以辨认
 
