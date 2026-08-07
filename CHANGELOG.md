@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- 桌面 Matplotlib 图注/图例/坐标轴在深色背景下使用浅色文字，避免黑字看不清
+
 ### Planned
 - Web 会话可换 Redis 以支持多进程部署
 - 可选 WebSocket 推流，降低高频 step 轮询

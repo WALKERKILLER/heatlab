@@ -15,6 +15,7 @@ from heatlab.ui.common import (
     LabeledSlider,
     MplCanvas,
     style_axes,
+    style_legend,
 )
 
 
@@ -39,7 +40,7 @@ class BrownianTab(QWidget):
         self.ax_msd.set_title("均方位移与扩散常数")
         self.ax_msd.set_xlabel("滞后时间")
         self.ax_msd.set_ylabel("MSD")
-        self.ax_msd.legend(loc="upper left")
+        style_legend(self.ax_msd.legend(loc="upper left"))
 
         panel = ControlPanel("布朗运动")
         self.mass = LabeledSlider(

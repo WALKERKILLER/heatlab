@@ -11,7 +11,7 @@ QTabBar::tab:selected { color: #dbe7f3; background: #172330; border-bottom: 2px 
 QFrame#controlPanel { background: #111821; border: 1px solid #263241; border-radius: 12px; }
 QLabel#panelHeading { font-size: 18px; font-weight: 700; color: #ffffff; padding-bottom: 4px; }
 QLabel#valueLabel { color: #43d7c5; font-weight: 700; }
-QLabel#metricText { background: #0d141c; border: 1px solid #263241; border-radius: 8px; padding: 10px; line-height: 1.35; }
+QLabel#metricText { color: #dbe7f3; background: #0d141c; border: 1px solid #263241; border-radius: 8px; padding: 10px; line-height: 1.35; }
 QLabel#noteText { color: #8ea1b5; font-size: 12px; }
 QLabel#formulaText { color: #b9c9d9; background: #0d141c; border-radius: 8px; padding: 9px; }
 QPushButton { background: #1b2937; border: 1px solid #31445a; border-radius: 8px; padding: 8px 12px; min-height: 20px; }

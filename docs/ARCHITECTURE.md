@@ -52,6 +52,13 @@ repo1/                         # GitHub 仓库根（本目录）
 4. Canvas / Chart.js 重绘  
 5. 暂停只停前端步进；「应用并重置」重建会话  
 
+
+## 桌面 UI 主题
+
+- 工作台为深色工业扁平风格（`heatlab.ui.style.APP_STYLE`）。
+- Matplotlib 画布在 `heatlab.ui.common` 中统一设置浅色图注：`text.color` / `legend.labelcolor` / 轴标签与标题，避免默认黑字落在深色底上不可读。
+- 图例创建后经 `style_legend()` 再刷一遍文字色；3D 轴用 `style_3d_axes()`。
+
 ## 设计约束
 
 - **可复现**：同一版本 + 同一种子 + 同一参数 → 同一随机结果  

@@ -14,6 +14,7 @@ from heatlab.ui.common import (
     LabeledSlider,
     MplCanvas,
     style_axes,
+    style_legend,
 )
 
 
@@ -41,7 +42,7 @@ class MaxwellTab(QWidget):
         self.hist_patches = None
         self.ax_dist.set_xlabel("速率 v / (m·s⁻¹)")
         self.ax_dist.set_ylabel("概率密度 f(v)")
-        self.ax_dist.legend(loc="upper right")
+        style_legend(self.ax_dist.legend(loc="upper right"))
 
         panel = ControlPanel("麦克斯韦速率分布")
         self.temperature = LabeledSlider(
@@ -116,7 +117,7 @@ class MaxwellTab(QWidget):
         )
         self.ax_dist.relim()
         self.ax_dist.autoscale_view()
-        self.ax_dist.legend(loc="upper right")
+        style_legend(self.ax_dist.legend(loc="upper right"))
         self.ax_box.set_title(f"固定体积内分子运动｜T={self.model.state.temperature_c:.0f} °C")
         self.metrics.setText(
             f"最概然速率：{self.model.most_probable_speed:.1f} m/s\n"

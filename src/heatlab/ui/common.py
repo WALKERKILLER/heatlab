@@ -38,6 +38,28 @@ ACCENT = "#43d7c5"
 ACCENT_2 = "#ff6b7a"
 ACCENT_3 = "#65a7ff"
 
+# Matplotlib defaults to near-black text; force light copy on the dark canvas so
+# titles, axis labels, tick labels, and legend entries stay readable.
+mpl.rcParams.update(
+    {
+        "text.color": TEXT,
+        "axes.labelcolor": TEXT,
+        "axes.titlecolor": TEXT,
+        "axes.edgecolor": GRID,
+        "axes.facecolor": BG,
+        "xtick.color": MUTED,
+        "ytick.color": MUTED,
+        "figure.facecolor": BG,
+        "figure.edgecolor": BG,
+        "savefig.facecolor": BG,
+        "grid.color": GRID,
+        "legend.facecolor": PANEL,
+        "legend.edgecolor": GRID,
+        "legend.labelcolor": TEXT,
+        "legend.framealpha": 0.92,
+    }
+)
+
 
 class MplCanvas(FigureCanvasQTAgg):
     def __init__(self, parent: QWidget | None = None, *, width: float = 9, height: float = 5):
@@ -57,6 +79,35 @@ def style_axes(axis, *, grid: bool = True) -> None:
         spine.set_color(GRID)
     if grid:
         axis.grid(True, color=GRID, alpha=0.5, linewidth=0.7)
+    legend = axis.get_legend()
+    if legend is not None:
+        style_legend(legend)
+
+
+def style_legend(legend) -> None:
+    """Keep legend labels readable on the dark figure background."""
+    if legend is None:
+        return
+    legend.get_frame().set_facecolor(PANEL)
+    legend.get_frame().set_edgecolor(GRID)
+    legend.get_frame().set_alpha(0.92)
+    for text_artist in legend.get_texts():
+        text_artist.set_color(TEXT)
+    title_artist = legend.get_title()
+    if title_artist is not None:
+        title_artist.set_color(TEXT)
+
+
+def style_3d_axes(axis) -> None:
+    """Apply the same light-on-dark treatment to a Matplotlib 3D axes."""
+    axis.set_facecolor(BG)
+    axis.tick_params(colors=MUTED)
+    axis.title.set_color(TEXT)
+    for axis_plane in (axis.xaxis, axis.yaxis, axis.zaxis):
+        axis_plane.label.set_color(TEXT)
+        axis_plane.pane.set_facecolor(BG)
+        axis_plane.pane.set_edgecolor(GRID)
+    axis.grid(True, color=GRID, alpha=0.35)
 
 
 class LabeledSlider(QWidget):

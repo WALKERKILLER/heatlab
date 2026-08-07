@@ -15,6 +15,7 @@ from heatlab.ui.common import (
     LabeledSlider,
     MplCanvas,
     style_axes,
+    style_legend,
 )
 
 
@@ -38,7 +39,7 @@ class GaltonTab(QWidget):
         self.ax_hist.set_xlabel("落入位置 k（向右次数）")
         self.ax_hist.set_ylabel("概率")
         self.ax_hist.set_ylim(0, 0.35)
-        self.ax_hist.legend(loc="upper right")
+        style_legend(self.ax_hist.legend(loc="upper right"))
 
         panel = ControlPanel("伽尔顿板")
         self.particle_count = LabeledSlider(

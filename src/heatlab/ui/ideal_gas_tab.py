@@ -10,13 +10,11 @@ from heatlab.models.ideal_gas import IdealGasModel
 from heatlab.ui.common import (
     ACCENT,
     ACCENT_2,
-    BG,
-    GRID,
-    MUTED,
     ButtonRow,
     ControlPanel,
     LabeledSlider,
     MplCanvas,
+    style_3d_axes,
     style_axes,
 )
 
@@ -32,13 +30,7 @@ class IdealGasTab(QWidget):
         self.ax_box = self.canvas.figure.add_subplot(grid[0, 0])
         self.ax_phase = self.canvas.figure.add_subplot(grid[0, 1], projection="3d")
         style_axes(self.ax_box, grid=False)
-        self.ax_phase.set_facecolor(BG)
-        self.ax_phase.tick_params(colors=MUTED)
-        for axis in (self.ax_phase.xaxis, self.ax_phase.yaxis, self.ax_phase.zaxis):
-            axis.label.set_color("#dbe7f3")
-            axis.pane.set_facecolor(BG)
-            axis.pane.set_edgecolor(GRID)
-        self.ax_phase.grid(True, color=GRID, alpha=0.35)
+        style_3d_axes(self.ax_phase)
 
         points = self.model.display_positions
         self.particle_scatter = self.ax_box.scatter(
@@ -61,6 +53,7 @@ class IdealGasTab(QWidget):
         self.ax_phase.set_ylabel("V / L")
         self.ax_phase.set_zlabel("T / K")
         self.ax_phase.set_title("P-V-T 状态轨迹")
+        style_3d_axes(self.ax_phase)  # re-apply after labels/title
 
         panel = ControlPanel("理想气体")
         self.temperature = LabeledSlider(
