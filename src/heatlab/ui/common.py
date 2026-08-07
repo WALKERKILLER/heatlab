@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import os
+import sys
 import warnings
 from collections.abc import Callable
+from pathlib import Path
 
 import matplotlib as mpl
 from matplotlib import font_manager as _font_manager
@@ -21,32 +23,54 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-# Register the system Noto Sans CJK face explicitly: matplotlib's font cache
-# does not index TTC faces, so the family would otherwise be invisible to it.
-# Noto covers both CJK and Latin glyphs at a regular weight.
-for _noto_ttc in (
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-):
-    if os.path.exists(_noto_ttc):
-        _font_manager.fontManager.addfont(_noto_ttc)
-        break
 
-# Per-glyph fallback intentionally splits CJK (Droid) and Latin (DejaVu); the
-# resulting "Glyph missing" notices are expected noise, not errors.
+def _candidate_font_paths() -> list[Path]:
+    """Return font files bundled with the app, then system fallbacks.
+
+    The bundled Droid Sans Fallback ships with the project (and inside the
+    PyInstaller bundle on Windows), so the desktop app never depends on the
+    host system having a CJK font installed.
+    """
+    candidates: list[Path] = []
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        bundle_root = Path(sys._MEIPASS)
+        candidates.append(bundle_root / "heatlab" / "web" / "static" / "fonts" / "DroidSansFallback.ttf")
+        candidates.append(bundle_root / "src" / "heatlab" / "web" / "static" / "fonts" / "DroidSansFallback.ttf")
+    candidates.append(Path(__file__).resolve().parent.parent / "web" / "static" / "fonts" / "DroidSansFallback.ttf")
+    candidates.extend(
+        [
+            Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+            Path("/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"),
+        ]
+    )
+    return [path for path in candidates if path.exists()]
+
+
+# matplotlib's font cache does not index every TTC face, so register the
+# bundled/system CJK faces explicitly. The first registered font wins.
+for _font_path in _candidate_font_paths():
+    try:
+        _font_manager.fontManager.addfont(str(_font_path))
+    except Exception:
+        continue
+
+# Per-glyph fallback intentionally splits CJK (Droid/Noto) and Latin (DejaVu);
+# the resulting "Glyph missing" notices are expected noise, not errors.
 warnings.filterwarnings("ignore", message=r"Glyph .* missing from font", category=UserWarning)
 
-# Noto Sans CJK SC first: regular-weight CJK + Latin coverage in one face, so
-# matplotlib never falls back to a thin (Light) Ming face. DejaVu is kept as
-# the last-resort fallback for rare symbol glyphs Noto lacks.
+# Matplotlib picks the FIRST existing family and then does NOT fall back per
+# glyph, so the chosen font must cover CJK + Latin together. Order matters:
+# Windows ships Microsoft YaHei/SimHei; Linux ships Noto (registered above);
+# the bundled Droid Sans Fallback covers CJK as a last resort; DejaVu must
+# stay last (Latin-only, would render CJK as tofu boxes if chosen first).
 mpl.rcParams["font.sans-serif"] = [
+    "Microsoft YaHei",
+    "SimHei",
     "Noto Sans CJK SC",
-    "DejaVu Sans",
     "Noto Sans CJK JP",
     "Droid Sans Fallback",
     "AR PL UMing CN",
-    "Microsoft YaHei",
-    "SimHei",
+    "DejaVu Sans",
 ]
 mpl.rcParams["axes.unicode_minus"] = False
 

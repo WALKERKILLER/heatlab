@@ -26,11 +26,30 @@ jobs:
           python -m pip install --upgrade pip
           pip install ".[dev]"
 
+      - name: Verify CJK glyphs render (no tofu)
+        shell: pwsh
+        run: |
+          python -c "
+          import warnings, io
+          import matplotlib
+          import heatlab.ui.common
+          from matplotlib.figure import Figure
+          warnings.filterwarnings('error', message=r'Glyph .* missing from font')
+          fig = Figure(figsize=(4, 1))
+          ax = fig.add_subplot(111); ax.axis('off')
+          ax.text(0.5, 0.5, '花粉粒子运动轨迹｜时间平均 MSD｜4Dt｜速率 v/(m·s⁻¹)',
+                  ha='center', va='center', fontsize=12, color='white')
+          buf = io.BytesIO()
+          fig.savefig(buf, facecolor='#0b0f14', format='png')
+          print('CJK glyph check passed')
+          "
+
       - name: Build Windows binary (merged window)
         shell: pwsh
         run: |
           pyinstaller --noconfirm --clean --windowed --name HeatLab `
             --collect-all heatlab `
+            --add-data "src/heatlab/web/static/fonts;heatlab/web/static/fonts" `
             src/heatlab/app.py
 
       - name: Smoke test (launch then auto-kill)
@@ -46,6 +65,14 @@ jobs:
           }
           Write-Output "still running after 15s: launch OK"
           Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+
+      - name: Verify bundled CJK font inside exe
+        shell: pwsh
+        run: |
+          $font = Get-ChildItem -Path dist/HeatLab -Recurse -Filter DroidSansFallback.ttf |
+            Select-Object -First 1
+          if ($null -eq $font) { Write-Error "DroidSansFallback.ttf not bundled"; exit 1 }
+          Write-Output "bundled font: $($font.FullName) ($([math]::Round($font.Length/1KB)) KB)"
 
       - name: Package zip
         shell: pwsh
