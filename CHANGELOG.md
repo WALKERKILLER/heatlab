@@ -6,6 +6,7 @@
 
 ### Fixed
 - 桌面 Matplotlib 图注/图例/坐标轴在深色背景下使用浅色文字，避免黑字看不清
+- 图例文字改为纯白并放大到 11pt；优先使用常规字重中文字体（Droid Sans Fallback），避免细体小字在深色底上难以辨认
 
 ### Planned
 - Web 会话可换 Redis 以支持多进程部署

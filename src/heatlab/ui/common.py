@@ -18,14 +18,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+# Droid Sans Fallback first: it ships a regular-weight (400) CJK face; the
+# legacy AR PL UMing fonts are Light-only, which renders thin and hard to read
+# at small sizes on the dark canvas. DejaVu covers the Latin glyphs Droid lacks
+# via matplotlib's per-glyph fallback chain.
 mpl.rcParams["font.sans-serif"] = [
+    "Droid Sans Fallback",
+    "DejaVu Sans",
     "Noto Sans CJK SC",
     "Noto Sans CJK JP",
     "AR PL UMing CN",
-    "Droid Sans Fallback",
     "Microsoft YaHei",
     "SimHei",
-    "DejaVu Sans",
 ]
 mpl.rcParams["axes.unicode_minus"] = False
 
@@ -92,10 +96,11 @@ def style_legend(legend) -> None:
     legend.get_frame().set_edgecolor(GRID)
     legend.get_frame().set_alpha(0.92)
     for text_artist in legend.get_texts():
-        text_artist.set_color(TEXT)
+        text_artist.set_color("#ffffff")
+        text_artist.set_fontsize(11)
     title_artist = legend.get_title()
     if title_artist is not None:
-        title_artist.set_color(TEXT)
+        title_artist.set_color("#ffffff")
 
 
 def style_3d_axes(axis) -> None:

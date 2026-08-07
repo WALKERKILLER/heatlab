@@ -57,7 +57,8 @@ repo1/                         # GitHub 仓库根（本目录）
 
 - 工作台为深色工业扁平风格（`heatlab.ui.style.APP_STYLE`）。
 - Matplotlib 画布在 `heatlab.ui.common` 中统一设置浅色图注：`text.color` / `legend.labelcolor` / 轴标签与标题，避免默认黑字落在深色底上不可读。
-- 图例创建后经 `style_legend()` 再刷一遍文字色；3D 轴用 `style_3d_axes()`。
+- 图例创建后经 `style_legend()` 再刷一遍文字色（纯白 11pt）；3D 轴用 `style_3d_axes()`。
+- 中文字体优先常规字重的 Droid Sans Fallback，拉丁字符由 DejaVu Sans 逐字形回退补齐。
 
 ## 设计约束
 
