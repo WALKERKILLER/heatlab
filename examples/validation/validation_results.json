@@ -1,0 +1,16 @@
+{
+  "seed": 20260807,
+  "ideal_target_pressure_atm": 1.6,
+  "ideal_kinetic_pressure_atm": 1.5997458513376503,
+  "ideal_relative_error": 0.00015884291396858763,
+  "brownian_theoretical_D": 1.0,
+  "brownian_path_D_estimate": 1.159666498520201,
+  "brownian_ensemble_D_estimate": 0.944797304203879,
+  "maxwell_pdf_area": 0.9999989999992899,
+  "maxwell_sample_mean_mps": 530.7985490050808,
+  "maxwell_theoretical_mean_mps": 531.0628983742012,
+  "galton_N": 100,
+  "galton_sample_mean": 5.99,
+  "galton_sample_variance": 2.3499,
+  "galton_theoretical_probability_sum": 1.0000000000000004
+}

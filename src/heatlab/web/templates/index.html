@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="HeatLab 热学科学计算实时实验台：理想气体、布朗运动、麦克斯韦分布与伽尔顿板。" />
+  <title>HeatLab — Live Workbench</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body data-default-seed="{{ default_seed }}">
+{% raw %}
+  <div id="app">
+    <a class="skip-link" href="#main-workbench">跳到主工作区</a>
+    <header class="topbar" role="banner">
+      <div class="topbar-left">
+        <div class="brand-block">
+          <!-- 热学品牌标：深色热板 + 冷暖双色环 + 上升热浪，避免通用蓝方块 app badge -->
+          <div class="brand-mark" aria-hidden="true">
+            <span class="brand-mark-glow"></span>
+            <span class="brand-mark-plate">
+              <svg class="brand-icon" viewBox="0 0 24 24" width="16" height="16" focusable="false">
+                <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M8 19c0-3.2-1.6-5.2-1.6-8.2 0-1.7.7-3 1.9-3.9" />
+                  <path d="M12 20c0-3.8-2-6.1-2-9.6 0-2.1.9-3.7 2.3-4.8" />
+                  <path d="M16 19c0-3.2-1.6-5.2-1.6-8.2 0-1.7.7-3 1.9-3.9" />
+                </g>
+              </svg>
+            </span>
+          </div>
+          <div class="brand-copy">
+            <div class="brand-title" id="app-title">
+              <span class="brand-name">HeatLab</span>
+              <span class="brand-divider" aria-hidden="true"></span>
+              <span class="brand-product">Workbench</span>
+            </div>
+            <div class="brand-sub">热学科学计算 · 实时实验台</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <div class="command-tray" role="group" aria-labelledby="seed-label">
+          <div class="seed-field">
+            <label class="field-label" id="seed-label" for="seed-input">
+              <svg class="field-icon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+                <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                  <circle cx="5" cy="5" r="1.1" fill="currentColor" stroke="none" />
+                  <circle cx="11" cy="5" r="1.1" fill="currentColor" stroke="none" />
+                  <circle cx="5" cy="11" r="1.1" fill="currentColor" stroke="none" />
+                  <circle cx="11" cy="11" r="1.1" fill="currentColor" stroke="none" />
+                  <circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none" />
+                  <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
+                </g>
+              </svg>
+              <span>种子</span>
+            </label>
+            <input
+              id="seed-input"
+              type="number"
+              v-model.number="seed"
+              min="0"
+              max="2147483647"
+              inputmode="numeric"
+              autocomplete="off"
+              aria-describedby="seed-hint"
+            />
+            <span id="seed-hint" class="sr-only">用于复现随机实验；更改后点应用并重置</span>
+          </div>
+          <button type="button" class="btn btn-primary btn-with-icon" @click="applySeed">
+            <svg class="btn-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false">
+              <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 8a5 5 0 0 1 8.3-3.7" />
+                <path d="M13 8a5 5 0 0 1-8.3 3.7" />
+                <path d="M11.2 2.8V5h2.2" />
+                <path d="M4.8 13.2V11H2.6" />
+              </g>
+            </svg>
+            <span>应用并重置</span>
+          </button>
+        </div>
+
+        <!-- 运行态与 transport 同组：状态是遥测，操作是控制（better-layout 分组） -->
+        <div
+          class="run-cluster"
+          :class="{ 'is-paused': paused && !error, 'is-error': !!error, 'is-live': !paused && !error }"
+          role="group"
+          aria-label="动画运行控制"
+        >
+          <div class="run-meter" :title="statusText" aria-hidden="true">
+            <span class="run-meter-signal">
+              <span class="run-bar" style="--bar-i: 0"></span>
+              <span class="run-bar" style="--bar-i: 1"></span>
+              <span class="run-bar" style="--bar-i: 2"></span>
+              <span class="run-bar" style="--bar-i: 3"></span>
+            </span>
+            <span class="run-meter-copy">
+              <span class="run-meter-kicker">SESSION</span>
+              <span class="run-meter-state">{{ error ? "故障" : (paused ? "已暂停" : "实时中") }}</span>
+            </span>
+          </div>
+          <button
+            type="button"
+            class="btn btn-transport"
+            :class="paused ? 'is-paused' : 'is-live'"
+            @click="togglePause"
+            :aria-pressed="paused ? 'true' : 'false'"
+            :aria-label="paused ? '继续动画' : '暂停动画'"
+          >
+            <span class="icon-swap" aria-hidden="true">
+              <svg class="btn-icon icon-pause" viewBox="0 0 16 16" width="13" height="13" focusable="false">
+                <g fill="currentColor">
+                  <rect x="3.5" y="3" width="3" height="10" rx="0.8" />
+                  <rect x="9.5" y="3" width="3" height="10" rx="0.8" />
+                </g>
+              </svg>
+              <svg class="btn-icon icon-play" viewBox="0 0 16 16" width="13" height="13" focusable="false">
+                <path fill="currentColor" d="M5 3.4v9.2c0 .5.55.8.97.55l7.1-4.6a.65.65 0 0 0 0-1.1l-7.1-4.6A.65.65 0 0 0 5 3.4z" />
+              </svg>
+            </span>
+            <span class="btn-transport-label">{{ paused ? "继续" : "暂停" }}</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="tabs" role="tablist" aria-label="实验专题">
+      <button
+        v-for="item in topics"
+        :key="item.id"
+        type="button"
+        class="tab"
+        role="tab"
+        :id="'topic-tab-' + item.id"
+        :aria-selected="topic === item.id ? 'true' : 'false'"
+        :aria-controls="'main-workbench'"
+        :tabindex="topic === item.id ? 0 : -1"
+        :class="{ active: topic === item.id }"
+        @click="switchTopic(item.id)"
+        @keydown="onTopicKeydown($event, item.id)"
+      >
+        <span class="tab-kicker" aria-hidden="true">{{ item.kicker }}</span>
+        <span class="tab-label">{{ item.label }}</span>
+        <span class="tab-desc">{{ item.desc }}</span>
+      </button>
+    </div>
+
+    <main id="main-workbench" class="layout" role="main" tabindex="-1">
+      <aside class="panel" aria-labelledby="params-heading">
+        <div class="panel-head">
+          <div class="panel-kicker">参数</div>
+          <h2 id="params-heading">{{ currentMeta.label }}</h2>
+          <p class="panel-lead">{{ currentMeta.lead }}</p>
+        </div>
+        <div class="panel-body">
+        <template v-if="topic === 'ideal-gas'">
+          <div class="control-block">
+            <div class="control-row">
+              <label for="ideal-temp">温度 T</label>
+              <strong id="ideal-temp-value">{{ ideal.temperature_c }} °C</strong>
+            </div>
+            <input
+              id="ideal-temp"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              v-model.number="ideal.temperature_c"
+              @input="onIdealChange"
+              :aria-valuetext="ideal.temperature_c + ' 摄氏度'"
+              aria-describedby="ideal-temp-value"
+            />
+          </div>
+          <div class="control-block">
+            <div class="control-row">
+              <label for="ideal-pressure">压强 P</label>
+              <strong id="ideal-pressure-value">{{ ideal.pressure_atm.toFixed(2) }} atm</strong>
+            </div>
+            <input
+              id="ideal-pressure"
+              type="range"
+              min="1"
+              max="2"
+              step="0.01"
+              v-model.number="ideal.pressure_atm"
+              @input="onIdealChange"
+              :aria-valuetext="ideal.pressure_atm.toFixed(2) + ' 大气压'"
+              aria-describedby="ideal-pressure-value"
+            />
+          </div>
+          <div class="metrics" v-if="ideal.data" role="group" aria-label="热力学实时读数">
+            <div class="metric-item"><span>体积 V</span><strong>{{ ideal.data.volume_litre.toFixed(4) }} L</strong></div>
+            <div class="metric-item"><span>温度 T</span><strong>{{ ideal.data.temperature_k.toFixed(2) }} K</strong></div>
+            <div class="metric-item"><span>设定 P</span><strong>{{ ideal.data.pressure_atm.toFixed(3) }} atm</strong></div>
+            <div class="metric-item"><span>动能论 P</span><strong>{{ ideal.data.kinetic_pressure_atm.toFixed(3) }} atm</strong></div>
+          </div>
+        </template>
+
+        <template v-else-if="topic === 'brownian'">
+          <div class="control-block">
+            <div class="control-row">
+              <label for="brownian-mass">质量 m/m₀</label>
+              <strong id="brownian-mass-value">{{ brownian.mass_ratio.toFixed(2) }}</strong>
+            </div>
+            <input
+              id="brownian-mass"
+              type="range"
+              min="0.05"
+              max="1"
+              step="0.01"
+              v-model.number="brownian.mass_ratio"
+              @input="onBrownianChange"
+              :aria-valuetext="brownian.mass_ratio.toFixed(2)"
+              aria-describedby="brownian-mass-value"
+            />
+          </div>
+          <div class="control-block">
+            <div class="control-row">
+              <label for="brownian-molecules">液体分子数</label>
+              <strong id="brownian-molecules-value">{{ brownian.molecule_count }}</strong>
+            </div>
+            <input
+              id="brownian-molecules"
+              type="range"
+              min="1"
+              max="100"
+              step="1"
+              v-model.number="brownian.molecule_count"
+              @input="onBrownianChange"
+              :aria-valuetext="String(brownian.molecule_count)"
+              aria-describedby="brownian-molecules-value"
+            />
+          </div>
+          <div class="button-row">
+            <button type="button" class="btn" @click="resetBrownian">清空轨迹</button>
+          </div>
+          <div class="metrics" v-if="brownian.data" role="group" aria-label="布朗运动读数">
+            <div class="metric-item"><span>理论 D</span><strong>{{ brownian.data.theoretical_D.toFixed(4) }}</strong></div>
+            <div class="metric-item"><span>估计 D</span><strong>{{ formatOptional(brownian.data.empirical_D) }}</strong></div>
+            <div class="metric-item"><span>时长</span><strong>{{ brownian.data.elapsed.toFixed(2) }}</strong></div>
+          </div>
+        </template>
+
+        <template v-else-if="topic === 'maxwell'">
+          <div class="control-block">
+            <div class="control-row">
+              <label for="maxwell-temp">温度 T</label>
+              <strong id="maxwell-temp-value">{{ maxwell.temperature_c }} °C</strong>
+            </div>
+            <input
+              id="maxwell-temp"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              v-model.number="maxwell.temperature_c"
+              @input="onMaxwellChange"
+              :aria-valuetext="maxwell.temperature_c + ' 摄氏度'"
+              aria-describedby="maxwell-temp-value"
+            />
+          </div>
+          <div class="button-row">
+            <button type="button" class="btn" @click="resetMaxwell">重新采样</button>
+          </div>
+          <div class="metrics" v-if="maxwell.data" role="group" aria-label="麦克斯韦读数">
+            <div class="metric-item"><span>最概然</span><strong>{{ maxwell.data.most_probable_speed.toFixed(1) }} m/s</strong></div>
+            <div class="metric-item"><span>平均</span><strong>{{ maxwell.data.mean_speed.toFixed(1) }} m/s</strong></div>
+            <div class="metric-item"><span>均方根</span><strong>{{ maxwell.data.rms_speed.toFixed(1) }} m/s</strong></div>
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="control-block">
+            <div class="control-row">
+              <label for="galton-count">粒子数 N</label>
+              <strong id="galton-count-value">{{ galton.particle_count }}</strong>
+            </div>
+            <input
+              id="galton-count"
+              type="range"
+              min="1"
+              max="100"
+              step="1"
+              v-model.number="galton.particle_count"
+              :aria-valuetext="String(galton.particle_count)"
+              aria-describedby="galton-count-value"
+            />
+          </div>
+          <div class="button-row">
+            <button type="button" class="btn btn-primary" @click="startGalton">投放粒子</button>
+          </div>
+          <div class="metrics" v-if="galton.data" role="group" aria-label="伽尔顿板读数">
+            <div class="metric-item"><span>样本数</span><strong>{{ galton.data.particle_count }}</strong></div>
+            <div class="metric-item"><span>均值</span><strong>{{ galton.data.sample_mean.toFixed(3) }}</strong></div>
+            <div class="metric-item"><span>方差</span><strong>{{ galton.data.sample_variance.toFixed(3) }}</strong></div>
+            <div class="metric-item"><span>层</span><strong>{{ galton.data.row }} / {{ galton.data.rows }}</strong></div>
+          </div>
+        </template>
+
+        </div>
+      </aside>
+
+      <section class="stage-card scene-panel" aria-labelledby="scene-heading">
+        <div class="card-chrome">
+          <h3 class="card-title" id="scene-heading">{{ sceneTitle }}</h3>
+          <div class="card-badge" aria-hidden="true">场景</div>
+        </div>
+        <div class="canvas-host" ref="sceneHost">
+          <canvas
+            ref="sceneCanvas"
+            width="900"
+            height="520"
+            role="img"
+            :aria-label="sceneTitle + '：实时粒子或轨迹动画'"
+          ></canvas>
+        </div>
+      </section>
+
+      <section class="stage-card plot-panel" aria-labelledby="chart-heading">
+        <div class="card-chrome">
+          <h3 class="card-title" id="chart-heading">{{ chartTitle }}</h3>
+          <div class="card-badge" aria-hidden="true">图表</div>
+        </div>
+        <div class="chart-host" ref="chartHost">
+          <canvas
+            ref="chartCanvas"
+            role="img"
+            :aria-label="chartTitle + '：当前实验结果图'"
+          ></canvas>
+        </div>
+      </section>
+    </main>
+
+    <footer
+      class="statusbar"
+      :class="statusClass"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <div class="statusbar-left">
+        <span class="dot" aria-hidden="true"></span>
+        <span class="statusbar-item">{{ statusText }}</span>
+        <span class="statusbar-item">{{ currentMeta.label }}</span>
+      </div>
+      <div class="statusbar-right">
+        <span class="statusbar-mono">种子 {{ seed }}</span>
+        <span class="statusbar-mono">{{ paused ? "已暂停" : "实时" }}</span>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    const DEFAULT_SEED = Number(document.body.dataset.defaultSeed || "20260807");
+    const { createApp, ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } = Vue;
+
+    const CHART_FONT = { family: "'HeatLab CJK', 'Segoe UI', sans-serif" };
+    const AXIS = {
+      color: "#9d9d9d",
+      grid: "rgba(62, 62, 66, 0.9)",
+    };
+    const COLORS = {
+      blue: "#3794ff",
+      green: "#89d185",
+      yellow: "#dcdcaa",
+      purple: "#c586c0",
+      orange: "#ce9178",
+      fg: "#cccccc",
+      strong: "#ffffff",
+      editor: "#1e1e1e",
+      editorAlt: "#252526",
+    };
+
+    createApp({
+      setup() {
+        const topics = [
+          { id: "ideal-gas", kicker: "01", label: "热力学", desc: "P-V 轨迹", lead: "调 T/P，看分子运动与动能论 P-V 实时点。" },
+          { id: "brownian", kicker: "02", label: "布朗运动", desc: "轨迹与 MSD", lead: "花粉受随机碰撞，轨迹与扩散常数估计。" },
+          { id: "maxwell", kicker: "03", label: "麦克斯韦", desc: "速率分布", lead: "分子运动对照理论 PDF 与样本直方图。" },
+          { id: "galton", kicker: "04", label: "伽尔顿板", desc: "二项分布", lead: "粒子逐层下落，槽位分布逼近二项分布。" },
+        ];
+
+        const topic = ref("ideal-gas");
+        const seed = ref(DEFAULT_SEED);
+        const sessionId = ref("");
+        const paused = ref(false);
+        const error = ref("");
+        const busy = ref(false);
+        const sceneCanvas = ref(null);
+        const chartCanvas = ref(null);
+        const sceneHost = ref(null);
+        const chartHost = ref(null);
+
+        let chart = null;
+        let rafId = 0;
+        let lastStepAt = 0;
+        let chartDirty = true;
+        let pendingParam = null;
+        let idealFrame = 0;
+        let resizeObserver = null;
+        let resizeTimer = null;
+
+        const ideal = reactive({ temperature_c: 20, pressure_atm: 1.0, data: null });
+        const brownian = reactive({ mass_ratio: 0.5, molecule_count: 40, data: null });
+        const maxwell = reactive({ temperature_c: 20, data: null });
+        const galton = reactive({ particle_count: 50, data: null });
+
+        const currentMeta = computed(() => topics.find((item) => item.id === topic.value) || topics[0]);
+        const sceneTitle = computed(() => {
+          if (topic.value === "ideal-gas") return "分子无规则热运动";
+          if (topic.value === "brownian") return "花粉粒子运动轨迹";
+          if (topic.value === "maxwell") return "固定体积中的分子运动";
+          return "伽尔顿板下落";
+        });
+        const chartTitle = computed(() => {
+          if (topic.value === "ideal-gas") return "P-V 轨迹";
+          if (topic.value === "brownian") return "均方位移 MSD";
+          if (topic.value === "maxwell") return "速率分布 f(v)";
+          return "槽位概率分布";
+        });
+        const statusClass = computed(() => {
+          if (error.value) return "error";
+          if (paused.value) return "paused";
+          return "live";
+        });
+        const statusText = computed(() => {
+          if (error.value) return error.value;
+          if (paused.value) return "动画已暂停";
+          return "动画实时运行中";
+        });
+        const prefersReducedMotion = ref(
+          typeof window !== "undefined"
+            && typeof window.matchMedia === "function"
+            && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        );
+
+        function formatOptional(value) {
+          return value == null || Number.isNaN(value) ? "—" : Number(value).toFixed(4);
+        }
+
+        async function postJson(url, body = {}) {
+          const response = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(sessionId.value ? { "X-Session-Id": sessionId.value } : {}),
+            },
+            body: JSON.stringify({ session_id: sessionId.value, seed: seed.value, ...body }),
+          });
+          if (!response.ok) throw new Error(`无法连接实验服务（HTTP ${response.status}）。请检查服务是否在运行，然后重试。`);
+          const payload = await response.json();
+          if (payload.session_id) sessionId.value = payload.session_id;
+          return payload;
+        }
+
+        function axisScale(titleText) {
+          return {
+            title: { display: true, text: titleText, color: AXIS.color, font: CHART_FONT },
+            ticks: { color: AXIS.color, font: { ...CHART_FONT, size: 11 }, maxTicksLimit: 6 },
+            grid: { color: AXIS.grid },
+            border: { color: "#3e3e42" },
+          };
+        }
+
+        function ensureChart(config, topicKey) {
+          if (chart) {
+            chart.destroy();
+            chart = null;
+          }
+          const ctx = chartCanvas.value.getContext("2d");
+          chart = new Chart(ctx, {
+            ...config,
+            options: {
+              ...config.options,
+              animation: false,
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  labels: { color: COLORS.fg, font: { ...CHART_FONT, size: 11 }, boxWidth: 10, boxHeight: 10 },
+                },
+                ...(config.options?.plugins || {}),
+              },
+            },
+          });
+          chart._heatTopic = topicKey;
+        }
+
+        function updateChart(updater) {
+          if (!chart) return;
+          updater(chart);
+          chart.update("none");
+        }
+
+        function clearScene() {
+          const canvas = sceneCanvas.value;
+          if (!canvas) return null;
+          const ctx = canvas.getContext("2d");
+          const dpr = window.devicePixelRatio || 1;
+          const displayWidth = canvas.clientWidth || 900;
+          const displayHeight = canvas.clientHeight || 520;
+          const targetW = Math.floor(displayWidth * dpr);
+          const targetH = Math.floor(displayHeight * dpr);
+          if (canvas.width !== targetW || canvas.height !== targetH) {
+            canvas.width = targetW;
+            canvas.height = targetH;
+          }
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.clearRect(0, 0, displayWidth, displayHeight);
+
+          ctx.fillStyle = COLORS.editor;
+          ctx.fillRect(0, 0, displayWidth, displayHeight);
+          // subtle IDE grid
+          ctx.save();
+          ctx.strokeStyle = "rgba(62, 62, 66, 0.55)";
+          ctx.lineWidth = 1;
+          const gridSize = 24;
+          for (let x = 0; x <= displayWidth; x += gridSize) {
+            ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, displayHeight); ctx.stroke();
+          }
+          for (let y = 0; y <= displayHeight; y += gridSize) {
+            ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(displayWidth, y + 0.5); ctx.stroke();
+          }
+          ctx.restore();
+          return { ctx, width: displayWidth, height: displayHeight };
+        }
+
+        function drawParticles(positions, options = {}) {
+          const scene = clearScene();
+          if (!scene) return;
+          const { ctx, width, height } = scene;
+          const pad = 28;
+          const boxW = options.boxWidth ?? 1;
+          const boxH = options.boxHeight ?? 1;
+          const scaleX = (width - 2 * pad) / Math.max(boxW, 1e-6);
+          const scaleY = (height - 2 * pad) / Math.max(boxH, 1e-6);
+
+          ctx.save();
+          ctx.strokeStyle = "#3e3e42";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(pad + 0.5, pad + 0.5, boxW * scaleX, boxH * scaleY);
+          ctx.restore();
+
+          const color = options.color || COLORS.blue;
+          for (const point of positions || []) {
+            const x = pad + point[0] * scaleX;
+            const y = pad + (boxH - point[1]) * scaleY;
+            ctx.beginPath();
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.9;
+            ctx.arc(x, y, options.radius || 3.1, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+        }
+
+        function drawPath(path) {
+          const scene = clearScene();
+          if (!scene || !path || path.length < 2) return;
+          const { ctx, width, height } = scene;
+          const xs = path.map((p) => p[0]);
+          const ys = path.map((p) => p[1]);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+          const maxY = Math.max(...ys);
+          const pad = 30;
+          const spanX = Math.max(maxX - minX, 0.2);
+          const spanY = Math.max(maxY - minY, 0.2);
+          const usableW = width - 2 * pad;
+          const usableH = height - 2 * pad;
+          const mapX = (x) => pad + ((x - minX) / spanX) * usableW;
+          const mapY = (y) => pad + (1 - (y - minY) / spanY) * usableH;
+
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = COLORS.blue;
+          ctx.beginPath();
+          path.forEach((point, index) => {
+            const x = mapX(point[0]);
+            const y = mapY(point[1]);
+            if (index === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          });
+          ctx.stroke();
+
+          const last = path[path.length - 1];
+          ctx.fillStyle = COLORS.yellow;
+          ctx.beginPath();
+          ctx.arc(mapX(last[0]), mapY(last[1]), 4.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        function drawGalton(data) {
+          const scene = clearScene();
+          if (!scene || !data) return;
+          const { ctx, width, height } = scene;
+          const rows = data.rows || 12;
+          const padX = 40;
+          const padY = 28;
+          const usableW = width - 2 * padX;
+          const usableH = height - 2 * padY;
+          const mapX = (x) => padX + ((x + rows) / (2 * rows)) * usableW;
+          const mapY = (row) => padY + (row / rows) * usableH;
+
+          ctx.fillStyle = "#6e6e6e";
+          for (let row = 0; row < rows; row += 1) {
+            for (let x = -row; x <= row; x += 2) {
+              ctx.beginPath();
+              ctx.arc(mapX(x), mapY(row), 2.2, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+
+          if (data.finished) {
+            ctx.strokeStyle = "rgba(55, 148, 255, 0.22)";
+            ctx.lineWidth = 1;
+            for (const path of (data.paths || []).slice(0, 40)) {
+              ctx.beginPath();
+              path.forEach((x, row) => {
+                const px = mapX(x);
+                const py = mapY(row);
+                if (row === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+              });
+              ctx.stroke();
+            }
+          }
+
+          ctx.fillStyle = COLORS.blue;
+          for (const point of data.particle_xy || []) {
+            const row = -point[1];
+            ctx.beginPath();
+            ctx.arc(mapX(point[0]), mapY(row), 3.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        function renderScene() {
+          if (topic.value === "ideal-gas" && ideal.data) {
+            drawParticles(ideal.data.positions, { boxWidth: ideal.data.box_width, boxHeight: 1 });
+          } else if (topic.value === "brownian" && brownian.data) {
+            drawPath(brownian.data.path);
+          } else if (topic.value === "maxwell" && maxwell.data) {
+            drawParticles(maxwell.data.positions, { boxWidth: 1, boxHeight: 1, color: COLORS.purple });
+          } else if (topic.value === "galton" && galton.data) {
+            drawGalton(galton.data);
+          }
+        }
+
+        function renderChartIfNeeded(force = false) {
+          if (!force && !chartDirty) return;
+          chartDirty = false;
+
+          if (topic.value === "ideal-gas" && ideal.data) {
+            const phase = (ideal.data.phase_history || []).map((point) => ({ x: point[0], y: point[1] }));
+            const kinetic = (ideal.data.kinetic_trail || []).map((point) => ({ x: point[0], y: point[1] }));
+            const live = ideal.data.live_point
+              ? [{ x: ideal.data.live_point[0], y: ideal.data.live_point[1] }]
+              : [];
+
+            if (!chart || chart._heatTopic !== "ideal-gas") {
+              ensureChart({
+                type: "scatter",
+                data: {
+                  datasets: [
+                    {
+                      label: "设定路径 (PV=nRT)",
+                      data: phase,
+                      showLine: true,
+                      borderColor: COLORS.yellow,
+                      backgroundColor: COLORS.yellow,
+                      pointRadius: 2.5,
+                      borderWidth: 1.5,
+                      tension: 0,
+                    },
+                    {
+                      label: "动能论轨迹",
+                      data: kinetic,
+                      showLine: true,
+                      borderColor: "rgba(55, 148, 255, 0.65)",
+                      backgroundColor: "rgba(55, 148, 255, 0.15)",
+                      pointRadius: 0,
+                      borderWidth: 1.25,
+                      tension: 0.15,
+                    },
+                    {
+                      label: "当前动能论点",
+                      data: live,
+                      showLine: false,
+                      backgroundColor: COLORS.blue,
+                      borderColor: COLORS.strong,
+                      pointRadius: 5,
+                      pointHoverRadius: 6,
+                    },
+                  ],
+                },
+                options: {
+                  scales: {
+                    x: axisScale("P / atm"),
+                    y: axisScale("V / L"),
+                  },
+                },
+              }, "ideal-gas");
+            } else {
+              updateChart((c) => {
+                c.data.datasets[0].data = phase;
+                c.data.datasets[1].data = kinetic;
+                c.data.datasets[2].data = live;
+              });
+            }
+          } else if (topic.value === "brownian" && brownian.data) {
+            const labels = (brownian.data.msd_lag || []).map((value) => value.toFixed(2));
+            if (!chart || chart._heatTopic !== "brownian") {
+              ensureChart({
+                type: "line",
+                data: {
+                  labels,
+                  datasets: [{
+                    label: "MSD",
+                    data: brownian.data.msd || [],
+                    borderColor: COLORS.blue,
+                    backgroundColor: "rgba(55, 148, 255, 0.10)",
+                    tension: 0.25,
+                    pointRadius: 0,
+                    fill: true,
+                  }],
+                },
+                options: {
+                  scales: {
+                    x: axisScale("滞后时间"),
+                    y: axisScale("MSD"),
+                  },
+                },
+              }, "brownian");
+            } else {
+              updateChart((c) => {
+                c.data.labels = labels;
+                c.data.datasets[0].data = brownian.data.msd || [];
+              });
+            }
+          } else if (topic.value === "maxwell" && maxwell.data && maxwell.data.hist_v) {
+            const pdfLookup = (target) => {
+              const xs = maxwell.data.pdf_v || [];
+              const ys = maxwell.data.pdf_f || [];
+              let best = 0;
+              let bestDist = Infinity;
+              for (let i = 0; i < xs.length; i += 1) {
+                const dist = Math.abs(xs[i] - target);
+                if (dist < bestDist) {
+                  bestDist = dist;
+                  best = ys[i];
+                }
+              }
+              return best;
+            };
+            const labels = maxwell.data.hist_v.map((value) => value.toFixed(0));
+            const theory = maxwell.data.hist_v.map((value) => pdfLookup(value));
+            if (!chart || chart._heatTopic !== "maxwell") {
+              ensureChart({
+                data: {
+                  labels,
+                  datasets: [
+                    {
+                      type: "bar",
+                      label: "样本",
+                      data: maxwell.data.hist_f,
+                      backgroundColor: "rgba(197, 134, 192, 0.45)",
+                      borderWidth: 0,
+                    },
+                    {
+                      type: "line",
+                      label: "理论 PDF",
+                      data: theory,
+                      borderColor: COLORS.yellow,
+                      pointRadius: 0,
+                      tension: 0.25,
+                    },
+                  ],
+                },
+                options: {
+                  scales: {
+                    x: axisScale("速率 v"),
+                    y: axisScale("f(v)"),
+                  },
+                },
+              }, "maxwell");
+            } else {
+              updateChart((c) => {
+                c.data.labels = labels;
+                c.data.datasets[0].data = maxwell.data.hist_f;
+                c.data.datasets[1].data = theory;
+              });
+            }
+          } else if (topic.value === "galton" && galton.data) {
+            const labels = (galton.data.bins || []).map(String);
+            if (!chart || chart._heatTopic !== "galton") {
+              ensureChart({
+                data: {
+                  labels,
+                  datasets: [
+                    {
+                      type: "bar",
+                      label: "模拟",
+                      data: galton.data.probabilities,
+                      backgroundColor: "rgba(55, 148, 255, 0.45)",
+                      borderWidth: 0,
+                    },
+                    {
+                      type: "line",
+                      label: "理论",
+                      data: galton.data.theoretical,
+                      borderColor: COLORS.yellow,
+                      pointRadius: 3,
+                      tension: 0.25,
+                    },
+                  ],
+                },
+                options: {
+                  scales: {
+                    x: axisScale("槽位 k"),
+                    y: axisScale("概率"),
+                  },
+                },
+              }, "galton");
+            } else if (galton.data.finished) {
+              updateChart((c) => {
+                c.data.labels = labels;
+                c.data.datasets[0].data = galton.data.probabilities;
+                c.data.datasets[1].data = galton.data.theoretical;
+              });
+            }
+          }
+        }
+
+        async function ensureSession() {
+          if (sessionId.value) return;
+          const payload = await postJson("/api/session", { seed: seed.value });
+          sessionId.value = payload.session_id;
+        }
+
+        async function applySeed() {
+          error.value = "";
+          try {
+            await ensureSession();
+            const payload = await postJson("/api/session/reset", { seed: seed.value });
+            sessionId.value = payload.session_id;
+            idealFrame = 0;
+            chartDirty = true;
+            await bootstrapTopic(true);
+          } catch (err) {
+            error.value = err.message || String(err);
+          }
+        }
+
+        function debounceParams(fn, wait = 100) {
+          return (...args) => {
+            if (pendingParam) clearTimeout(pendingParam);
+            pendingParam = setTimeout(() => fn(...args), wait);
+          };
+        }
+
+        const onIdealChange = debounceParams(async () => {
+          try {
+            await ensureSession();
+            const payload = await postJson("/api/live/ideal-gas/set", {
+              temperature_c: ideal.temperature_c,
+              pressure_atm: ideal.pressure_atm,
+            });
+            ideal.data = payload.data;
+            chartDirty = true;
+            renderScene();
+            renderChartIfNeeded(true);
+          } catch (err) {
+            error.value = err.message || String(err);
+          }
+        });
+
+        const onBrownianChange = debounceParams(async () => {
+          try {
+            await ensureSession();
+            const payload = await postJson("/api/live/brownian/set", {
+              mass_ratio: brownian.mass_ratio,
+              molecule_count: brownian.molecule_count,
+            });
+            brownian.data = payload.data;
+            chartDirty = true;
+            renderScene();
+            renderChartIfNeeded(true);
+          } catch (err) {
+            error.value = err.message || String(err);
+          }
+        });
+
+        const onMaxwellChange = debounceParams(async () => {
+          try {
+            await ensureSession();
+            const payload = await postJson("/api/live/maxwell/set", {
+              temperature_c: maxwell.temperature_c,
+            });
+            maxwell.data = payload.data;
+            chartDirty = true;
+            renderScene();
+            renderChartIfNeeded(true);
+          } catch (err) {
+            error.value = err.message || String(err);
+          }
+        });
+
+        async function resetBrownian() {
+          try {
+            await ensureSession();
+            const payload = await postJson("/api/live/brownian/reset");
+            brownian.data = payload.data;
+            chartDirty = true;
+            renderScene();
+            renderChartIfNeeded(true);
+          } catch (err) {
+            error.value = err.message || String(err);
+          }
+        }
+
+        async function resetMaxwell() {
+          try {
+            await ensureSession();
+            const payload = await postJson("/api/live/maxwell/reset");
+            maxwell.data = payload.data;
+            chartDirty = true;
+            renderScene();
+            renderChartIfNeeded(true);
+          } catch (err) {
+            error.value = err.message || String(err);
+          }
+        }
+
+        async function startGalton() {
+          try {
+            await ensureSession();
+            const payload = await postJson("/api/live/galton/start", {
+              particle_count: galton.particle_count,
+            });
+            galton.data = payload.data;
+            chartDirty = true;
+            paused.value = false;
+            renderScene();
+            renderChartIfNeeded(true);
+          } catch (err) {
+            error.value = err.message || String(err);
+          }
+        }
+
+        async function bootstrapTopic(forceChart = false) {
+          await ensureSession();
+          if (topic.value === "ideal-gas") {
+            const payload = await postJson("/api/live/ideal-gas/set", {
+              temperature_c: ideal.temperature_c,
+              pressure_atm: ideal.pressure_atm,
+            });
+            ideal.data = payload.data;
+          } else if (topic.value === "brownian") {
+            const payload = await postJson("/api/live/brownian/set", {
+              mass_ratio: brownian.mass_ratio,
+              molecule_count: brownian.molecule_count,
+            });
+            brownian.data = payload.data;
+          } else if (topic.value === "maxwell") {
+            const payload = await postJson("/api/live/maxwell/set", {
+              temperature_c: maxwell.temperature_c,
+            });
+            maxwell.data = payload.data;
+          } else if (!galton.data) {
+            await startGalton();
+          }
+          chartDirty = true;
+          await nextTick();
+          renderScene();
+          renderChartIfNeeded(forceChart || true);
+        }
+
+        async function stepOnce() {
+          if (busy.value || paused.value) return;
+          busy.value = true;
+          try {
+            if (topic.value === "ideal-gas") {
+              const payload = await postJson("/api/live/ideal-gas/step", { steps: 1 });
+              ideal.data = payload.data;
+              idealFrame += 1;
+              // Kinetic trail changes every frame — keep the P-V chart alive.
+              chartDirty = true;
+            } else if (topic.value === "brownian") {
+              const payload = await postJson("/api/live/brownian/step", { steps: 2 });
+              brownian.data = payload.data;
+              chartDirty = true;
+            } else if (topic.value === "maxwell") {
+              const payload = await postJson("/api/live/maxwell/step", { steps: 1 });
+              const histV = maxwell.data?.hist_v;
+              const histF = maxwell.data?.hist_f;
+              maxwell.data = payload.data;
+              if (histV) {
+                maxwell.data.hist_v = histV;
+                maxwell.data.hist_f = histF;
+              }
+            } else if (topic.value === "galton") {
+              if (galton.data && !galton.data.finished) {
+                const payload = await postJson("/api/live/galton/step", { steps: 1 });
+                galton.data = payload.data;
+                if (galton.data.finished) chartDirty = true;
+              }
+            }
+            renderScene();
+            renderChartIfNeeded();
+            error.value = "";
+          } catch (err) {
+            error.value = err.message || String(err);
+          } finally {
+            busy.value = false;
+          }
+        }
+
+        function loop(timestamp) {
+          rafId = requestAnimationFrame(loop);
+          // 降低刷新节奏；系统开启「减少动态效果」时进一步放慢
+          const baseInterval = topic.value === "galton" ? 90 : 33;
+          const interval = prefersReducedMotion.value ? Math.max(baseInterval * 3, 120) : baseInterval;
+          if (timestamp - lastStepAt >= interval) {
+            lastStepAt = timestamp;
+            stepOnce();
+          }
+        }
+
+        function togglePause() {
+          paused.value = !paused.value;
+        }
+
+        function onTopicKeydown(event, currentId) {
+          const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
+          if (!keys.includes(event.key)) return;
+          event.preventDefault();
+          const ids = topics.map((item) => item.id);
+          const index = ids.indexOf(currentId);
+          let nextIndex = index;
+          if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+            nextIndex = (index - 1 + ids.length) % ids.length;
+          } else if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+            nextIndex = (index + 1) % ids.length;
+          } else if (event.key === "Home") {
+            nextIndex = 0;
+          } else if (event.key === "End") {
+            nextIndex = ids.length - 1;
+          }
+          const nextId = ids[nextIndex];
+          switchTopic(nextId).then(() => {
+            const nextTab = document.getElementById(`topic-tab-${nextId}`);
+            if (nextTab) nextTab.focus();
+          });
+        }
+
+        async function switchTopic(id) {
+          if (topic.value === id) return;
+          topic.value = id;
+          chartDirty = true;
+          if (chart) {
+            chart.destroy();
+            chart = null;
+          }
+          try {
+            await bootstrapTopic(true);
+          } catch (err) {
+            error.value = err.message || String(err);
+          }
+        }
+
+        function onResize() {
+          if (resizeTimer) clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(() => {
+            renderScene();
+            if (chart) {
+              chart.resize();
+              chart.update("none");
+            }
+          }, 50);
+        }
+
+        onMounted(async () => {
+          try {
+            const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+            const syncMotionPreference = (event) => {
+              prefersReducedMotion.value = !!(event && "matches" in event ? event.matches : motionQuery.matches);
+            };
+            syncMotionPreference();
+            if (typeof motionQuery.addEventListener === "function") {
+              motionQuery.addEventListener("change", syncMotionPreference);
+            } else if (typeof motionQuery.addListener === "function") {
+              motionQuery.addListener(syncMotionPreference);
+            }
+            await ensureSession();
+            await bootstrapTopic(true);
+            window.addEventListener("resize", onResize);
+            if (typeof ResizeObserver !== "undefined") {
+              resizeObserver = new ResizeObserver(() => onResize());
+              if (sceneHost.value) resizeObserver.observe(sceneHost.value);
+              if (chartHost.value) resizeObserver.observe(chartHost.value);
+            }
+            rafId = requestAnimationFrame(loop);
+          } catch (err) {
+            error.value = err.message || String(err);
+          }
+        });
+
+        onBeforeUnmount(() => {
+          window.removeEventListener("resize", onResize);
+          if (resizeObserver) resizeObserver.disconnect();
+          if (resizeTimer) clearTimeout(resizeTimer);
+          if (rafId) cancelAnimationFrame(rafId);
+          if (pendingParam) clearTimeout(pendingParam);
+          if (chart) chart.destroy();
+        });
+
+        return {
+          topics,
+          topic,
+          seed,
+          paused,
+          error,
+          sceneCanvas,
+          chartCanvas,
+          sceneHost,
+          chartHost,
+          ideal,
+          brownian,
+          maxwell,
+          galton,
+          currentMeta,
+          sceneTitle,
+          chartTitle,
+          statusClass,
+          statusText,
+          formatOptional,
+          applySeed,
+          togglePause,
+          switchTopic,
+          onTopicKeydown,
+          onIdealChange,
+          onBrownianChange,
+          onMaxwellChange,
+          resetBrownian,
+          resetMaxwell,
+          startGalton,
+        };
+      },
+    }).mount("#app");
+  </script>
+{% endraw %}
+</body>
+</html>

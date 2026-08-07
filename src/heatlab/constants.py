@@ -1,0 +1,15 @@
+"""Physical constants and project-wide numerical defaults."""
+
+from __future__ import annotations
+
+BOLTZMANN = 1.380_649e-23  # J/K, exact in SI
+AVOGADRO = 6.022_140_76e23  # 1/mol, exact in SI
+GAS_CONSTANT = 8.314_462_618_153_24  # J/(mol K)
+STANDARD_ATMOSPHERE = 101_325.0  # Pa, exact
+CELSIUS_OFFSET = 273.15
+
+REFERENCE_TEMPERATURE_K = 293.15
+REFERENCE_PRESSURE_PA = STANDARD_ATMOSPHERE
+NITROGEN_MOLECULE_MASS_KG = 28.0134e-3 / AVOGADRO
+
+DEFAULT_SEED = 20_260_807

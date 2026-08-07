@@ -1,0 +1,138 @@
+"""Shared Qt and Matplotlib widgets."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+import matplotlib as mpl
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
+)
+
+mpl.rcParams["font.sans-serif"] = [
+    "Noto Sans CJK SC",
+    "Noto Sans CJK JP",
+    "AR PL UMing CN",
+    "Droid Sans Fallback",
+    "Microsoft YaHei",
+    "SimHei",
+    "DejaVu Sans",
+]
+mpl.rcParams["axes.unicode_minus"] = False
+
+BG = "#0b0f14"
+PANEL = "#111821"
+GRID = "#263241"
+TEXT = "#dbe7f3"
+MUTED = "#8ea1b5"
+ACCENT = "#43d7c5"
+ACCENT_2 = "#ff6b7a"
+ACCENT_3 = "#65a7ff"
+
+
+class MplCanvas(FigureCanvasQTAgg):
+    def __init__(self, parent: QWidget | None = None, *, width: float = 9, height: float = 5):
+        figure = Figure(figsize=(width, height), tight_layout=True)
+        figure.patch.set_facecolor(BG)
+        super().__init__(figure)
+        self.setParent(parent)
+
+
+def style_axes(axis, *, grid: bool = True) -> None:
+    axis.set_facecolor(BG)
+    axis.tick_params(colors=MUTED)
+    axis.xaxis.label.set_color(TEXT)
+    axis.yaxis.label.set_color(TEXT)
+    axis.title.set_color(TEXT)
+    for spine in axis.spines.values():
+        spine.set_color(GRID)
+    if grid:
+        axis.grid(True, color=GRID, alpha=0.5, linewidth=0.7)
+
+
+class LabeledSlider(QWidget):
+    valueChanged = Signal(float)
+
+    def __init__(
+        self,
+        title: str,
+        minimum: int,
+        maximum: int,
+        value: int,
+        *,
+        transform: Callable[[int], float] = float,
+        formatter: Callable[[float], str] = lambda x: f"{x:g}",
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._transform = transform
+        self._formatter = formatter
+
+        title_label = QLabel(title)
+        self.value_label = QLabel()
+        self.value_label.setObjectName("valueLabel")
+        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider.setRange(minimum, maximum)
+        self.slider.setValue(value)
+        self.slider.setTracking(True)
+
+        top = QHBoxLayout()
+        top.setContentsMargins(0, 0, 0, 0)
+        top.addWidget(title_label)
+        top.addStretch(1)
+        top.addWidget(self.value_label)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        layout.addLayout(top)
+        layout.addWidget(self.slider)
+
+        self.slider.valueChanged.connect(self._emit_value)
+        self._emit_value(value)
+
+    @property
+    def value(self) -> float:
+        return self._transform(self.slider.value())
+
+    def _emit_value(self, raw: int) -> None:
+        value = self._transform(raw)
+        self.value_label.setText(self._formatter(value))
+        self.valueChanged.emit(value)
+
+
+class ControlPanel(QFrame):
+    def __init__(self, title: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("controlPanel")
+        self.layout_box = QVBoxLayout(self)
+        self.layout_box.setContentsMargins(18, 18, 18, 18)
+        self.layout_box.setSpacing(15)
+        heading = QLabel(title)
+        heading.setObjectName("panelHeading")
+        self.layout_box.addWidget(heading)
+
+    def add(self, widget: QWidget) -> None:
+        self.layout_box.addWidget(widget)
+
+    def finish(self) -> None:
+        self.layout_box.addStretch(1)
+
+
+class ButtonRow(QWidget):
+    def __init__(self, *buttons: QPushButton, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        for button in buttons:
+            layout.addWidget(button)

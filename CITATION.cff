@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+title: HeatLab — Thermal Physics Scientific Computing Lab
+message: If you use this software, please cite it as below.
+type: software
+authors:
+  - name: HeatLab project team
+version: 0.1.0
+date-released: "2026-08-08"
+license: MIT
+abstract: >
+  Interactive thermal-physics visualizations for ideal gas kinetics,
+  Brownian motion, Maxwell–Boltzmann speed distribution, and the Galton board,
+  with desktop (PySide6) and real-time browser (Flask) front ends.
+keywords:
+  - thermal physics
+  - scientific computing
+  - visualization
+  - Langevin dynamics
+  - Maxwell-Boltzmann
+  - Galton board

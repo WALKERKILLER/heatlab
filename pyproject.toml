@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "heatlab-sciviz"
+version = "0.1.0"
+description = "Interactive thermal-physics scientific-computing visualizations"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "HeatLab project team"}]
+keywords = ["thermal-physics", "scientific-computing", "visualization", "education"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Education",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Physics",
+  "Topic :: Scientific/Engineering :: Visualization",
+]
+
+[project.urls]
+Homepage = "https://github.com/OWNER/heatlab"
+Documentation = "https://github.com/OWNER/heatlab#readme"
+Repository = "https://github.com/OWNER/heatlab"
+Issues = "https://github.com/OWNER/heatlab/issues"
+Changelog = "https://github.com/OWNER/heatlab/blob/main/CHANGELOG.md"
+dependencies = [
+  "numpy>=2.0,<3",
+  "scipy>=1.13,<2",
+  "matplotlib>=3.9,<4",
+  "PySide6>=6.8,<7",
+  "flask>=3.0,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<10",
+  "ruff>=0.9,<1",
+  "mypy>=1.13,<2",
+  "pyinstaller>=6.11,<7",
+]
+
+[project.scripts]
+heatlab = "heatlab.app:main"
+heatlab-web = "heatlab.web.app:main"
+heatlab-ideal-gas = "heatlab.app:main_ideal_gas"
+heatlab-brownian = "heatlab.app:main_brownian"
+heatlab-maxwell = "heatlab.app:main_maxwell"
+heatlab-galton = "heatlab.app:main_galton"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+
+[tool.setuptools.package-data]
+heatlab = ["web/templates/*", "web/static/*", "web/static/fonts/*"]
