@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import os
+import warnings
 
 import matplotlib as mpl
+from matplotlib import font_manager as _font_manager
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt, Signal
@@ -18,15 +21,29 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-# Droid Sans Fallback first: it ships a regular-weight (400) CJK face; the
-# legacy AR PL UMing fonts are Light-only, which renders thin and hard to read
-# at small sizes on the dark canvas. DejaVu covers the Latin glyphs Droid lacks
-# via matplotlib's per-glyph fallback chain.
+# Register the system Noto Sans CJK face explicitly: matplotlib's font cache
+# does not index TTC faces, so the family would otherwise be invisible to it.
+# Noto covers both CJK and Latin glyphs at a regular weight.
+for _noto_ttc in (
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+):
+    if os.path.exists(_noto_ttc):
+        _font_manager.fontManager.addfont(_noto_ttc)
+        break
+
+# Per-glyph fallback intentionally splits CJK (Droid) and Latin (DejaVu); the
+# resulting "Glyph missing" notices are expected noise, not errors.
+warnings.filterwarnings("ignore", message=r"Glyph .* missing from font", category=UserWarning)
+
+# Noto Sans CJK SC first: regular-weight CJK + Latin coverage in one face, so
+# matplotlib never falls back to a thin (Light) Ming face. DejaVu is kept as
+# the last-resort fallback for rare symbol glyphs Noto lacks.
 mpl.rcParams["font.sans-serif"] = [
-    "Droid Sans Fallback",
-    "DejaVu Sans",
     "Noto Sans CJK SC",
+    "DejaVu Sans",
     "Noto Sans CJK JP",
+    "Droid Sans Fallback",
     "AR PL UMing CN",
     "Microsoft YaHei",
     "SimHei",

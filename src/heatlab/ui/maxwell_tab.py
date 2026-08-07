@@ -40,7 +40,7 @@ class MaxwellTab(QWidget):
         velocity, density = self.model.distribution_curve()
         self.pdf_line, = self.ax_dist.plot(velocity, density, color=ACCENT, linewidth=2.0, label="理论 f(v)")
         self.hist_patches = None
-        self.ax_dist.set_xlabel("速率 v / (m·s⁻¹)")
+        self.ax_dist.set_xlabel(r"速率 $v$ / (m·s$^{-1}$)")
         self.ax_dist.set_ylabel("概率密度 f(v)")
         style_legend(self.ax_dist.legend(loc="upper right"))
 

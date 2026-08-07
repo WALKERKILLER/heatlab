@@ -10,26 +10,6 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "HeatLab project team"}]
-keywords = ["thermal-physics", "scientific-computing", "visualization", "education"]
-classifiers = [
-  "Development Status :: 4 - Beta",
-  "Intended Audience :: Education",
-  "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: MIT License",
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
-  "Topic :: Scientific/Engineering :: Physics",
-  "Topic :: Scientific/Engineering :: Visualization",
-]
-
-[project.urls]
-Homepage = "https://github.com/WALKERKILLER/heatlab"
-Documentation = "https://github.com/WALKERKILLER/heatlab#readme"
-Repository = "https://github.com/WALKERKILLER/heatlab"
-Issues = "https://github.com/WALKERKILLER/heatlab/issues"
-Changelog = "https://github.com/WALKERKILLER/heatlab/blob/main/CHANGELOG.md"
 dependencies = [
   "numpy>=2.0,<3",
   "scipy>=1.13,<2",
