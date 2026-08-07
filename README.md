@@ -45,6 +45,14 @@
 
 桌面 Matplotlib 图例/图注在深色主题下强制浅色文字并优先常规字重中文字体，避免黑字或细体字不可读。
 
+### Windows 预览客户端
+
+不想装 Python 也可以直接体验：GitHub Actions 自动用 PyInstaller 编译的 **Windows 合并版**（四 Tab 一个窗口），解压即用。
+
+- 下载：[v0.2.0-preview Release](https://github.com/WALKERKILLER/heatlab/releases/tag/v0.2.0-preview) → `HeatLab-win64.zip`（约 112 MB）
+- 使用：解压后双击 `HeatLab\HeatLab.exe`
+- 说明：预览版自动构建于每次打 `v*` tag 时（见 [build-windows workflow](.github/workflows/build-windows.yml)）；已内置中文字体，离线可用
+
 ## 仓库结构
 
 ```text
