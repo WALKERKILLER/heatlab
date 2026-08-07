@@ -1,6 +1,6 @@
 # HeatLab · 热学科学计算可视化
 
-[![CI](https://github.com/OWNER/heatlab/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/heatlab/actions/workflows/ci.yml)
+[![CI](https://github.com/WALKERKILLER/heatlab/actions/workflows/ci.yml/badge.svg)](https://github.com/WALKERKILLER/heatlab/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](CHANGELOG.md)
@@ -82,7 +82,7 @@
 ## 安装
 
 ```bash
-git clone https://github.com/OWNER/heatlab.git
+git clone https://github.com/WALKERKILLER/heatlab.git
 cd heatlab
 
 # 推荐
@@ -224,4 +224,4 @@ pip install -e .
 
 ---
 
-**注意**：将本仓库推到 GitHub 后，请把文档与徽章中的 `OWNER/heatlab` 换成真实 `用户名/仓库名`。
+**仓库地址**：<https://github.com/WALKERKILLER/heatlab>

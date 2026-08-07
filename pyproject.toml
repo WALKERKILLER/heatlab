@@ -25,11 +25,11 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/OWNER/heatlab"
-Documentation = "https://github.com/OWNER/heatlab#readme"
-Repository = "https://github.com/OWNER/heatlab"
-Issues = "https://github.com/OWNER/heatlab/issues"
-Changelog = "https://github.com/OWNER/heatlab/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/WALKERKILLER/heatlab"
+Documentation = "https://github.com/WALKERKILLER/heatlab#readme"
+Repository = "https://github.com/WALKERKILLER/heatlab"
+Issues = "https://github.com/WALKERKILLER/heatlab/issues"
+Changelog = "https://github.com/WALKERKILLER/heatlab/blob/main/CHANGELOG.md"
 dependencies = [
   "numpy>=2.0,<3",
   "scipy>=1.13,<2",

@@ -21,5 +21,5 @@
 - 单元测试、数值验证脚本与示例输出图
 - MIT 许可证与第三方声明
 
-[Unreleased]: https://github.com/OWNER/heatlab/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/OWNER/heatlab/releases/tag/v0.1.0
+[Unreleased]: https://github.com/WALKERKILLER/heatlab/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/WALKERKILLER/heatlab/releases/tag/v0.1.0

@@ -11,7 +11,7 @@
 需要 **Python 3.11+**（推荐 3.12）与 [uv](https://github.com/astral-sh/uv)（或 pip）。
 
 ```bash
-git clone https://github.com/OWNER/heatlab.git
+git clone https://github.com/WALKERKILLER/heatlab.git
 cd heatlab
 
 uv venv --python 3.12
