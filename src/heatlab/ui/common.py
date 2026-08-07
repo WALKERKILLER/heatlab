@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import os
 import warnings
+from collections.abc import Callable
 
 import matplotlib as mpl
 from matplotlib import font_manager as _font_manager
