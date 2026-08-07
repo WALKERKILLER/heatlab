@@ -39,14 +39,13 @@ jobs:
           $exe = "dist/HeatLab/HeatLab.exe"
           if (-not (Test-Path $exe)) { Write-Error "missing $exe"; exit 1 }
           $proc = Start-Process -FilePath $exe -PassThru
-          try {
-            Wait-Process -Id $proc.Id -Timeout 10 -ErrorAction Stop
-            Write-Output "process exited early with rc=$($proc.ExitCode)"
+          Start-Sleep -Seconds 15
+          if ($proc.HasExited) {
+            Write-Error "process exited early with rc=$($proc.ExitCode)"
             exit 1
-          } catch {
-            Write-Output "still running after 10s: launch OK"
-            Stop-Process -Id $proc.Id -Force
           }
+          Write-Output "still running after 15s: launch OK"
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 
       - name: Package zip
         shell: pwsh
