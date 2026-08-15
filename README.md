@@ -6,7 +6,18 @@
 [![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](CHANGELOG.md)
 
 > 交互式热学科学计算实验台：理想气体 · 布朗运动 · 麦克斯韦速率分布 · 伽尔顿板  
-> 提供 **桌面 GUI（PySide6）** 与 **浏览器实时动画（Flask + Canvas）** 两种入口。
+> 提供 **浏览器实时版（推荐）** 与 **桌面 GUI（PySide6）** 两种入口。
+
+> [!IMPORTANT]
+> ## 🖥️ 强烈推荐使用 Web 端
+> 桌面版（PySide6）功能较为基础，仅用于快速离线预览；**所有完整交互体验都集中在浏览器实时版**：3D P-V-T 相图（旋转/缩放/悬停）、P-V / P-T / V-T 平面图、首次进入专题的实验说明（KaTeX 公式）、图表全屏放大、自动步进与采样等。
+>
+> 启动方式（只需 Python 环境）：
+>
+> ```bash
+> ./.venv/bin/heatlab-web        # 或 Windows: .venv\Scripts\heatlab-web.exe
+> # 浏览器打开 http://127.0.0.1:8765
+> ```
 
 ![Validation montage](examples/validation/validation_montage.png)
 
@@ -39,9 +50,9 @@
 
 三种使用方式：
 
-1. **合并桌面版** — 一个窗口四个 Tab（`heatlab`）
-2. **单专题桌面版** — `heatlab-ideal-gas` 等独立窗口
-3. **浏览器实时版** — `heatlab-web` → <http://127.0.0.1:8765>
+1. **浏览器实时版（推荐）** — `heatlab-web` → <http://127.0.0.1:8765>，功能最完整
+2. **合并桌面版** — 一个窗口四个 Tab（`heatlab`）
+3. **单专题桌面版** — `heatlab-ideal-gas` 等独立窗口
 
 桌面版与 Web 版共享同一套模型层与 VS Code Dark+ 工作台视觉：顶栏（品牌 + 种子命令托盘 + 运行簇）、专题 Tab、三栏「参数 | 场景 | 图表」、底部状态栏。桌面 Matplotlib 图例/图注在深色主题下强制浅色文字并优先常规字重中文字体，避免黑字或细体字不可读。
 
@@ -51,13 +62,13 @@ Web 端新增交互特性：
 - **专题信息弹窗**：首次进入每个专题时弹出说明面板，包含按任务文档编写的**实验说明 + 使用教程**，公式用 **KaTeX** 渲染
 - **全屏查看**：3D 相图与每个平面图右上角有放大按钮，弹窗内保留图注、坐标轴与 Plotly 工具栏
 
-### Windows 预览客户端
+### Windows 预览客户端（桌面基础版）
 
-不想装 Python 也可以直接体验：GitHub Actions 自动用 PyInstaller 编译的 **Windows 合并版**（四 Tab 一个窗口），解压即用。
+不想装 Python 也可以快速体验桌面版（**基础功能，非完整 Web 版**）：GitHub Actions 自动用 PyInstaller 编译的 **Windows 合并版**（四 Tab 一个窗口），解压即用。
 
 - 下载：[v0.2.0-preview Release](https://github.com/WALKERKILLER/heatlab/releases/tag/v0.2.0-preview) → `HeatLab-win64.zip`（约 112 MB）
 - 使用：解压后双击 `HeatLab\HeatLab.exe`
-- 说明：预览版自动构建于每次打 `v*` tag 时（见 [build-windows workflow](.github/workflows/build-windows.yml)）；已内置中文字体，离线可用
+- 说明：预览版自动构建于每次打 `v*` tag 时（见 [build-windows workflow](.github/workflows/build-windows.yml)）；已内置中文字体，离线可用。**完整交互（3D 相图、平面图、放大弹窗、专题说明）请使用浏览器实时版。**
 
 ## 仓库结构
 
@@ -120,7 +131,27 @@ pip install -e .
 
 ## 快速开始
 
-### 桌面版
+> **推荐直接使用浏览器实时版**（功能最完整）；桌面版仅供快速离线预览。
+
+### 浏览器实时版（推荐）
+
+```bash
+./.venv/bin/heatlab-web
+# 默认 http://127.0.0.1:8765
+
+./.venv/bin/heatlab-web --host 127.0.0.1 --port 8765
+```
+
+打开浏览器后：
+
+- 顶部 **命令托盘**：改种子 →「应用并重置」
+- **运行簇**：会话状态（实时中 / 已暂停 / 故障）+ 暂停/继续
+- 下方四个专题 Tab；三栏：参数 | 场景 Canvas | 图表
+- 首次进入每个专题会弹出**实验说明 + 使用教程**（公式用 KaTeX 渲染），点「开始实验」进入
+
+> 开发服务器仅供本机实验；公网部署请换 WSGI 并阅读 [SECURITY.md](SECURITY.md)。
+
+### 桌面版（基础版，不推荐日常使用）
 
 ```bash
 ./.venv/bin/heatlab                  # 四专题合并窗口
@@ -136,22 +167,7 @@ pip install -e .
 | `heatlab-maxwell` | 麦克斯韦 |
 | `heatlab-galton` | 伽尔顿板 |
 
-### 浏览器实时版
-
-```bash
-./.venv/bin/heatlab-web
-# 默认 http://127.0.0.1:8765
-
-./.venv/bin/heatlab-web --host 127.0.0.1 --port 8765
-```
-
-打开浏览器后：
-
-- 顶部 **命令托盘**：改种子 →「应用并重置」
-- **运行簇**：会话状态（实时中 / 已暂停 / 故障）+ 暂停/继续
-- 下方四个专题 Tab；三栏：参数 | 场景 Canvas | 图表
-
-> 开发服务器仅供本机实验；公网部署请换 WSGI 并阅读 [SECURITY.md](SECURITY.md)。
+> 桌面版只保留基础交互（滑条 + 图表），缺少 Web 端的 3D 相图、平面图、放大弹窗、专题说明等高级功能。
 
 ## Web 实时机制
 
