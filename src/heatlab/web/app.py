@@ -65,6 +65,7 @@ def create_app() -> Flask:
             session.set_ideal(
                 float(payload.get("temperature_c", 20.0)),
                 float(payload.get("pressure_atm", 1.0)),
+                process_mode=payload.get("process_mode"),
             )
             data = session.snapshot_ideal()
         return jsonify({"session_id": session.session_id, "data": data})

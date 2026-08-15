@@ -22,6 +22,25 @@ def _to_list(values: np.ndarray | list[Any], *, limit: int | None = None) -> lis
     return data.tolist()
 
 
+def _liquid_speed_distribution_payload(
+    speeds: np.ndarray, sigma: float, bins: int = 30
+) -> dict[str, Any]:
+    """2-D Maxwell-Boltzmann histogram (f(v)=v/σ²·exp(-v²/2σ²)) for liquids."""
+
+    if len(speeds) < 4 or sigma <= 0.0:
+        return {"speed_hist_v": [], "speed_hist_f": [], "speed_theory_v": [], "speed_theory_f": []}
+    hist_counts, bin_edges = np.histogram(speeds, bins=bins, density=True)
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    theory_v = np.linspace(0.0, float(bin_edges[-1]), 120)
+    theory_f = (theory_v / sigma**2) * np.exp(-(theory_v**2) / (2.0 * sigma**2))
+    return {
+        "speed_hist_v": _to_list(bin_centers),
+        "speed_hist_f": _to_list(hist_counts),
+        "speed_theory_v": _to_list(theory_v),
+        "speed_theory_f": _to_list(theory_f),
+    }
+
+
 @dataclass
 class LiveSession:
     """One browser client owns one multi-topic simulation session."""
@@ -35,8 +54,14 @@ class LiveSession:
     galton_batch: Any = field(default=None, init=False)
     galton_row: int = field(default=0, init=False)
     galton_finished: bool = field(default=True, init=False)
-    ideal_kinetic_trail: list = field(default_factory=list, init=False)
     lock: Lock = field(default_factory=Lock, repr=False)
+    # 理想气体相图几何缓存：粒子每帧 step 时宏观状态不变，
+    # 避免每帧重算 PV=nRT 曲面 / 等值线族 / 过程线这些大数组。
+    _ideal_geometry_signature: str = field(default="", init=False)
+    _ideal_process_line: Any = field(default=None, init=False)
+    _ideal_process_line_3d: Any = field(default=None, init=False)
+    _ideal_surface: Any = field(default=None, init=False)
+    _ideal_planar: Any = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.reset(self.seed)
@@ -52,48 +77,83 @@ class LiveSession:
         self.galton_batch = None
         self.galton_row = 0
         self.galton_finished = True
-        self.ideal_kinetic_trail = []
+        self._ideal_geometry_signature = ""
+        self._ideal_process_line = None
+        self._ideal_process_line_3d = None
+        self._ideal_surface = None
+        self._ideal_planar = None
 
     # ---- ideal gas ----
-    def set_ideal(self, temperature_c: float, pressure_atm: float) -> None:
+    def set_ideal(
+        self,
+        temperature_c: float,
+        pressure_atm: float,
+        process_mode: str | None = None,
+    ) -> None:
+        if process_mode is not None and process_mode != self.ideal.state.process_mode:
+            self.ideal.set_process_mode(process_mode)
         self.ideal.set_conditions(temperature_c, pressure_atm)
-        # Macroscopic path changes only when T/P change; keep kinetic trail continuous.
-        self._record_ideal_kinetic_point()
 
     def step_ideal(self, steps: int = 1) -> dict[str, Any]:
         for _ in range(max(1, steps)):
             self.ideal.step()
-            self._record_ideal_kinetic_point()
         return self.snapshot_ideal()
-
-    def _record_ideal_kinetic_point(self) -> None:
-        """Append a live kinetic (P, V) sample so the chart moves every frame."""
-        kinetic_atm = float(self.ideal.kinetic_pressure_pa() / STANDARD_ATMOSPHERE)
-        volume = float(self.ideal.state.volume_litre)
-        temperature_k = float(self.ideal.state.temperature_k)
-        self.ideal_kinetic_trail.append([kinetic_atm, volume, temperature_k])
-        if len(self.ideal_kinetic_trail) > 180:
-            del self.ideal_kinetic_trail[:-180]
 
     def snapshot_ideal(self) -> dict[str, Any]:
         state = self.ideal.state
         history = np.asarray(self.ideal.phase_history, dtype=float)
         kinetic_atm = float(self.ideal.kinetic_pressure_pa() / STANDARD_ATMOSPHERE)
-        if not self.ideal_kinetic_trail:
-            self._record_ideal_kinetic_point()
+        # 相图几何（曲面/等值线族/过程线）只随宏观状态变化：
+        # 粒子每帧 step 时状态不变 → 直接复用缓存，避免每帧重算大数组。
+        signature = (
+            f"{state.process_mode}|{state.temperature_c:.1f}|"
+            f"{state.pressure_atm:.3f}|{state.volume_litre:.4f}"
+        )
+        if signature != self._ideal_geometry_signature:
+            self._ideal_geometry_signature = signature
+            self._ideal_process_line = self.ideal.process_line()
+            self._ideal_process_line_3d = self.ideal.process_line_3d()
+            self._ideal_surface = self.ideal.pvt_surface()
+            self._ideal_planar = self.ideal.planar_families()
+        process_line = self._ideal_process_line
+        process_line_3d = self._ideal_process_line_3d
+        surface_p, surface_v, surface_t = self._ideal_surface
+        planar = self._ideal_planar
         return {
             "temperature_c": state.temperature_c,
             "pressure_atm": state.pressure_atm,
             "temperature_k": state.temperature_k,
             "volume_litre": state.volume_litre,
             "box_width": self.ideal.box_width,
+            "box_length": self.ideal.box_length,
+            "box_height": self.ideal.box_height,
+            "box_depth": self.ideal.box_depth,
             "kinetic_pressure_atm": kinetic_atm,
             "positions": _to_list(self.ideal.display_positions),
+            "speeds": _to_list(self.ideal.speeds),
             # Macroscopic PV=nRT path (grows when user moves sliders)
             "phase_history": _to_list(history),
-            # Live kinetic estimates (moves every simulation step)
-            "kinetic_trail": list(self.ideal_kinetic_trail),
-            "live_point": [kinetic_atm, float(state.volume_litre), float(state.temperature_k)],
+            "process_mode": state.process_mode,
+            # Current-mode theoretical line in (P, V); None in free mode
+            "process_line": (
+                {"points": _to_list(np.column_stack(process_line))}
+                if process_line is not None
+                else None
+            ),
+            # Current-mode theoretical line in (P, V, T) for the P-V-T phase diagram
+            "process_line_3d": (
+                {"points": _to_list(np.column_stack(process_line_3d))}
+                if process_line_3d is not None
+                else None
+            ),
+            # Full PV=nRT surface mesh (P / atm, V / L, T / K) for the phase diagram
+            "pvt_surface": {
+                "x": _to_list(surface_p),
+                "y": _to_list(surface_v),
+                "z": _to_list(surface_t),
+            },
+            # 大学物理热力学平面图数据（P-V 等温族 / P-T 等容族 / V-T 等压族）
+            "planar": planar,
         }
 
     # ---- brownian ----
@@ -113,6 +173,7 @@ class LiveSession:
         path = np.asarray(self.brownian.path, dtype=float)
         lag, msd = self.brownian.msd_curve()
         d_hat = self.brownian.empirical_diffusion()
+        liquid_speeds = np.asarray(self.brownian.liquid_speeds, dtype=float)
         return {
             "mass_ratio": self.brownian.params.mass_ratio,
             "molecule_count": self.brownian.params.molecule_count,
@@ -120,9 +181,22 @@ class LiveSession:
             "theoretical_D": self.brownian.params.theoretical_diffusion,
             "empirical_D": None if np.isnan(d_hat) else float(d_hat),
             "path": _to_list(path, limit=2_000),
-            "position": _to_list(self.brownian.position),
+            # 液体粒子层：位置 / 速度 / 速率（前端画热运动场景、速度分布与方向箭头）
+            "liquid_positions": _to_list(self.brownian.liquid_positions),
+            "liquid_velocities": _to_list(self.brownian.liquid_velocities),
+            "liquid_speeds": _to_list(liquid_speeds),
+            "liquid_sigma": self.brownian.liquid_speed_sigma,
+            "liquid_collision_count": self.brownian.liquid_collision_count,
+            # 花粉粒子：位置 / 速度 / 半径（前端画大颗粒与方向箭头）
+            "pollen_position": _to_list(self.brownian.position),
+            "pollen_velocity": _to_list(self.brownian.velocity),
+            "pollen_radius": self.brownian.params.pollen_radius,
+            "collision_count": self.brownian.collision_count,
+            "recent_collisions": _to_list(np.asarray(self.brownian.recent_collisions)),
             "msd_lag": _to_list(lag),
             "msd": _to_list(msd),
+            # 液体速率分布直方图 + 2-D 麦克斯韦理论曲线
+            **(_liquid_speed_distribution_payload(liquid_speeds, self.brownian.liquid_speed_sigma)),
         }
 
     # ---- maxwell ----
@@ -140,6 +214,7 @@ class LiveSession:
 
     def snapshot_maxwell(self, *, include_histogram: bool = True) -> dict[str, Any]:
         velocity, density = self.maxwell.distribution_curve()
+        comp_velocity, comp_density = self.maxwell.component_curve()
         payload: dict[str, Any] = {
             "temperature_c": self.maxwell.state.temperature_c,
             "most_probable_speed": self.maxwell.most_probable_speed,
@@ -149,13 +224,25 @@ class LiveSession:
             "speeds": _to_list(self.maxwell.speeds),
             "pdf_v": _to_list(velocity),
             "pdf_f": _to_list(density),
+            "component_pdf_v": _to_list(comp_velocity),
+            "component_pdf_f": _to_list(comp_density),
+            # y 轴固定上限（0 °C 峰值）：温度升高时曲线右移、峰值变矮，
+            # 避免坐标轴自动缩放造成“变形”观感。
+            "y_max_fixed": self.maxwell.fixed_pdf_peak,
+            "component_y_max_fixed": self.maxwell.fixed_component_peak,
         }
         if include_histogram:
-            samples = self.maxwell.sampled_speeds(6_000)
+            samples = self.maxwell.sampled_speeds(3_000)
             hist_counts, bin_edges = np.histogram(samples, bins=36, density=True)
             bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
             payload["hist_v"] = _to_list(bin_centers)
             payload["hist_f"] = _to_list(hist_counts)
+
+            comp_samples = self.maxwell.sampled_components(3_000)
+            comp_counts, comp_edges = np.histogram(comp_samples, bins=44, density=True)
+            comp_centers = 0.5 * (comp_edges[:-1] + comp_edges[1:])
+            payload["component_hist_v"] = _to_list(comp_centers)
+            payload["component_hist_f"] = _to_list(comp_counts)
         return payload
 
     # ---- galton ----
@@ -189,16 +276,20 @@ class LiveSession:
                 "row": 0,
                 "finished": True,
                 "particle_xy": [],
+                "path_prefixes": [],
                 "sample_mean": 0.0,
                 "sample_variance": 0.0,
             }
 
         batch = self.galton_batch
         row = min(self.galton_row, rows)
-        # Current particle positions at animation row
-        x = batch.paths[:, row]
-        y = np.full_like(x, -row, dtype=float)
-        particle_xy = np.column_stack((x, y))
+        # 每粒子的当前动画行路径：从顶部漏斗落到当前行（含当前行钉）
+        path_prefixes = batch.paths[:, : row + 1]
+        # 粒子当前坐标：仍在动 → 当前动画行；全部完成 → 停在各自狭槽内
+        if self.galton_finished:
+            particle_xy = [[float(x), float(-rows)] for x in batch.paths[:, -1]]
+        else:
+            particle_xy = [[float(x), float(-row)] for x in batch.paths[:, row]]
 
         sample_mean = float(np.average(bins, weights=batch.counts)) if batch.counts.sum() else 0.0
         sample_var = (
@@ -216,7 +307,8 @@ class LiveSession:
             "paths": _to_list(batch.paths, limit=60),
             "row": row,
             "finished": self.galton_finished,
-            "particle_xy": _to_list(particle_xy),
+            "particle_xy": _to_list(np.asarray(particle_xy, dtype=float)),
+            "path_prefixes": _to_list(path_prefixes),
             "sample_mean": sample_mean,
             "sample_variance": sample_var,
         }

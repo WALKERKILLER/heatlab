@@ -7,6 +7,9 @@
   <title>HeatLab — Live Workbench</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <link rel="stylesheet" href="/static/app.css" />
 </head>
 <body data-default-seed="{{ default_seed }}">
@@ -32,8 +35,7 @@
           <div class="brand-copy">
             <div class="brand-title" id="app-title">
               <span class="brand-name">HeatLab</span>
-              <span class="brand-divider" aria-hidden="true"></span>
-              <span class="brand-product">Workbench</span>
+              <span class="brand-sup">Workbench</span>
             </div>
             <div class="brand-sub">热学科学计算 · 实时实验台</div>
           </div>
@@ -146,7 +148,7 @@
       </button>
     </div>
 
-    <main id="main-workbench" class="layout" role="main" tabindex="-1">
+    <main id="main-workbench" class="layout" :class="{ 'layout-plot-wide': topic === 'maxwell' || topic === 'ideal-gas' || topic === 'brownian' || topic === 'galton' }" role="main" tabindex="-1">
       <aside class="panel" aria-labelledby="params-heading">
         <div class="panel-head">
           <div class="panel-kicker">参数</div>
@@ -155,6 +157,25 @@
         </div>
         <div class="panel-body">
         <template v-if="topic === 'ideal-gas'">
+          <div class="control-block">
+            <div class="control-row">
+              <label>过程模式</label>
+              <strong v-if="ideal.data">{{ processLabel }}</strong>
+            </div>
+            <div class="process-tabs" role="group" aria-label="准静态过程模式">
+              <button
+                v-for="mode in processModes"
+                :key="mode.id"
+                type="button"
+                class="process-tab"
+                :class="{ active: ideal.process_mode === mode.id }"
+                :aria-pressed="ideal.process_mode === mode.id ? 'true' : 'false'"
+                @click="setIdealProcessMode(mode.id)"
+              >
+                {{ mode.label }}
+              </button>
+            </div>
+          </div>
           <div class="control-block">
             <div class="control-row">
               <label for="ideal-temp">温度 T</label>
@@ -185,15 +206,69 @@
               step="0.01"
               v-model.number="ideal.pressure_atm"
               @input="onIdealChange"
+              :disabled="ideal.process_mode === 'isochoric'"
               :aria-valuetext="ideal.pressure_atm.toFixed(2) + ' 大气压'"
               aria-describedby="ideal-pressure-value"
             />
+          </div>
+          <div class="control-block sweep-block">
+            <div class="control-row">
+              <label>自动步进</label>
+              <strong>{{ sweepTargetLabel }}</strong>
+            </div>
+            <div class="process-tabs" role="group" aria-label="步进目标变量">
+              <button
+                type="button"
+                class="process-tab"
+                :class="{ active: sweep.target === 'temperature_c' }"
+                @click="setSweepTarget('temperature_c')"
+              >温度</button>
+              <button
+                type="button"
+                class="process-tab"
+                :class="{ active: sweep.target === 'pressure_atm' }"
+                :disabled="ideal.process_mode === 'isochoric'"
+                @click="setSweepTarget('pressure_atm')"
+              >压强</button>
+            </div>
+            <div class="process-tabs" role="group" aria-label="步进方向">
+              <button
+                type="button"
+                class="process-tab"
+                :class="{ active: sweep.direction > 0 }"
+                @click="setSweepDirection(1)"
+              >升</button>
+              <button
+                type="button"
+                class="process-tab"
+                :class="{ active: sweep.direction < 0 }"
+                @click="setSweepDirection(-1)"
+              >降</button>
+            </div>
+            <div class="control-row">
+              <label for="sweep-rate">速率</label>
+              <strong id="sweep-rate-value">{{ sweepRateLabel }}</strong>
+            </div>
+            <input
+              id="sweep-rate"
+              type="range"
+              min="1"
+              max="100"
+              step="1"
+              v-model.number="sweep.rate"
+              :aria-valuetext="sweepRateLabel"
+              aria-describedby="sweep-rate-value"
+            />
+            <button type="button" class="btn" :class="sweep.enabled ? 'btn-primary' : ''" @click="toggleSweep">
+              {{ sweep.enabled ? '停止步进' : '开始步进' }}
+            </button>
           </div>
           <div class="metrics" v-if="ideal.data" role="group" aria-label="热力学实时读数">
             <div class="metric-item"><span>体积 V</span><strong>{{ ideal.data.volume_litre.toFixed(4) }} L</strong></div>
             <div class="metric-item"><span>温度 T</span><strong>{{ ideal.data.temperature_k.toFixed(2) }} K</strong></div>
             <div class="metric-item"><span>设定 P</span><strong>{{ ideal.data.pressure_atm.toFixed(3) }} atm</strong></div>
             <div class="metric-item"><span>动能论 P</span><strong>{{ ideal.data.kinetic_pressure_atm.toFixed(3) }} atm</strong></div>
+            <div class="metric-item"><span>状态坐标 (P,V,T)</span><strong>({{ ideal.data.pressure_atm.toFixed(2) }} atm, {{ ideal.data.volume_litre.toFixed(3) }} L, {{ ideal.data.temperature_k.toFixed(2) }} K)</strong></div>
           </div>
         </template>
 
@@ -232,12 +307,59 @@
               aria-describedby="brownian-molecules-value"
             />
           </div>
+          <div class="control-block">
+            <div class="control-row">
+              <label class="switch-row" for="brownian-arrow">
+                轨迹方向箭头
+                <input
+                  id="brownian-arrow"
+                  type="checkbox"
+                  v-model="brownian.show_arrow"
+                  @change="renderScene"
+                  aria-label="显示或隐藏花粉粒子下一步运动方向箭头"
+                />
+              </label>
+              <strong>{{ brownian.show_arrow ? "显示" : "隐藏" }}</strong>
+            </div>
+          </div>
+          <div class="control-block">
+            <div class="control-row">
+              <label class="switch-row" for="brownian-vec">
+                液体速度矢量
+                <input
+                  id="brownian-vec"
+                  type="checkbox"
+                  v-model="brownian.show_vector"
+                  @change="renderScene"
+                  aria-label="显示或隐藏液体分子速度方向短线"
+                />
+              </label>
+              <strong>{{ brownian.show_vector ? "显示" : "隐藏" }}</strong>
+            </div>
+          </div>
+          <div class="control-block">
+            <div class="control-row">
+              <label class="switch-row" for="brownian-fade">
+                轨迹渐隐
+                <input
+                  id="brownian-fade"
+                  type="checkbox"
+                  v-model="brownian.trail_fade"
+                  @change="renderScene"
+                  aria-label="开启后轨迹旧段渐隐，关闭则完整保留"
+                />
+              </label>
+              <strong>{{ brownian.trail_fade ? "开启" : "关闭" }}</strong>
+            </div>
+          </div>
           <div class="button-row">
             <button type="button" class="btn" @click="resetBrownian">清空轨迹</button>
           </div>
           <div class="metrics" v-if="brownian.data" role="group" aria-label="布朗运动读数">
             <div class="metric-item"><span>理论 D</span><strong>{{ brownian.data.theoretical_D.toFixed(4) }}</strong></div>
             <div class="metric-item"><span>估计 D</span><strong>{{ formatOptional(brownian.data.empirical_D) }}</strong></div>
+            <div class="metric-item"><span>花粉碰撞</span><strong>{{ brownian.data.collision_count }}</strong></div>
+            <div class="metric-item"><span>液体碰撞</span><strong>{{ brownian.data.liquid_collision_count }}</strong></div>
             <div class="metric-item"><span>时长</span><strong>{{ brownian.data.elapsed.toFixed(2) }}</strong></div>
           </div>
         </template>
@@ -262,6 +384,43 @@
           </div>
           <div class="button-row">
             <button type="button" class="btn" @click="resetMaxwell">重新采样</button>
+          </div>
+          <div class="control-block sweep-block">
+            <div class="control-row">
+              <label>自动步进</label>
+              <strong>温度 T</strong>
+            </div>
+            <div class="process-tabs" role="group" aria-label="步进方向">
+              <button
+                type="button"
+                class="process-tab"
+                :class="{ active: maxwellSweep.direction > 0 }"
+                @click="setMaxwellSweepDirection(1)"
+              >升</button>
+              <button
+                type="button"
+                class="process-tab"
+                :class="{ active: maxwellSweep.direction < 0 }"
+                @click="setMaxwellSweepDirection(-1)"
+              >降</button>
+            </div>
+            <div class="control-row">
+              <label for="maxwell-sweep-rate">速率</label>
+              <strong id="maxwell-sweep-rate-value">{{ maxwellSweepRateLabel }}</strong>
+            </div>
+            <input
+              id="maxwell-sweep-rate"
+              type="range"
+              min="1"
+              max="100"
+              step="1"
+              v-model.number="maxwellSweep.rate"
+              :aria-valuetext="maxwellSweepRateLabel"
+              aria-describedby="maxwell-sweep-rate-value"
+            />
+            <button type="button" class="btn" :class="maxwellSweep.enabled ? 'btn-primary' : ''" @click="toggleMaxwellSweep">
+              {{ maxwellSweep.enabled ? '停止步进' : '开始步进' }}
+            </button>
           </div>
           <div class="metrics" v-if="maxwell.data" role="group" aria-label="麦克斯韦读数">
             <div class="metric-item"><span>最概然</span><strong>{{ maxwell.data.most_probable_speed.toFixed(1) }} m/s</strong></div>
@@ -317,20 +476,167 @@
         </div>
       </section>
 
-      <section class="stage-card plot-panel" aria-labelledby="chart-heading">
+      <section class="stage-card plot-panel" :class="{ 'plot-split': topic === 'maxwell' || topic === 'brownian', 'plot-pvt': topic === 'ideal-gas', 'plot-galton': topic === 'galton' }" aria-labelledby="chart-heading">
         <div class="card-chrome">
           <h3 class="card-title" id="chart-heading">{{ chartTitle }}</h3>
           <div class="card-badge" aria-hidden="true">图表</div>
         </div>
         <div class="chart-host" ref="chartHost">
+          <div
+            ref="phaseHost"
+            v-show="topic === 'ideal-gas'"
+            class="phase-host"
+            role="img"
+            aria-label="P-V-T 相图：三维状态轨迹与 PV=nRT 曲面"
+          ></div>
           <canvas
             ref="chartCanvas"
+            v-show="topic !== 'ideal-gas'"
             role="img"
             :aria-label="chartTitle + '：当前实验结果图'"
           ></canvas>
+          <button
+            type="button"
+            class="chart-zoom-btn"
+            v-if="topic === 'ideal-gas'"
+            @click="openModal('phase')"
+            aria-label="放大 3D 相图"
+            title="放大查看"
+          >
+            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+              <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                <path d="M6.5 1.5v5h-5" />
+                <path d="M9.5 14.5v-5h5" />
+                <path d="M1.5 6.5h5v-5" />
+                <path d="M14.5 9.5h-5v5" />
+              </g>
+            </svg>
+          </button>
+        </div>
+        <div class="chart-host" v-if="topic === 'maxwell' || topic === 'brownian'" ref="componentChartHost">
+          <canvas
+            ref="componentChartCanvas"
+            role="img"
+            :aria-label="componentChartTitle"
+          ></canvas>
+        </div>
+
+        <!-- 热力学平面图：P-V / P-T / V-T（大学物理常用图） -->
+        <div class="planar-panel" v-if="topic === 'ideal-gas'" role="group" aria-label="热力学平面图">
+          <div class="planar-card">
+            <div class="planar-title">P-V 图（等温线族）</div>
+            <canvas ref="planarPvCanvas"></canvas>
+            <button
+              type="button"
+              class="chart-zoom-btn"
+              @click="openModal('pv')"
+              aria-label="放大 P-V 图"
+              title="放大查看"
+            >
+              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+                <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                  <path d="M6.5 1.5v5h-5" />
+                  <path d="M9.5 14.5v-5h5" />
+                  <path d="M1.5 6.5h5v-5" />
+                  <path d="M14.5 9.5h-5v5" />
+                </g>
+              </svg>
+            </button>
+          </div>
+          <div class="planar-card">
+            <div class="planar-title">P-T 图（等容线族）</div>
+            <canvas ref="planarPtCanvas"></canvas>
+            <button
+              type="button"
+              class="chart-zoom-btn"
+              @click="openModal('pt')"
+              aria-label="放大 P-T 图"
+              title="放大查看"
+            >
+              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+                <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                  <path d="M6.5 1.5v5h-5" />
+                  <path d="M9.5 14.5v-5h5" />
+                  <path d="M1.5 6.5h5v-5" />
+                  <path d="M14.5 9.5h-5v5" />
+                </g>
+              </svg>
+            </button>
+          </div>
+          <div class="planar-card">
+            <div class="planar-title">V-T 图（等压线族）</div>
+            <canvas ref="planarVtCanvas"></canvas>
+            <button
+              type="button"
+              class="chart-zoom-btn"
+              @click="openModal('vt')"
+              aria-label="放大 V-T 图"
+              title="放大查看"
+            >
+              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+                <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                  <path d="M6.5 1.5v5h-5" />
+                  <path d="M9.5 14.5v-5h5" />
+                  <path d="M1.5 6.5h5v-5" />
+                  <path d="M14.5 9.5h-5v5" />
+                </g>
+              </svg>
+            </button>
+          </div>
         </div>
       </section>
     </main>
+
+    <!-- 专题信息弹窗：首次进入每个专题时给出实验说明与使用教程 -->
+    <div
+      class="modal-overlay"
+      v-if="infoOpen"
+      @click.self="closeInfo"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="infoTitle"
+    >
+      <div class="modal-dialog info-dialog">
+        <div class="modal-head">
+          <h3>{{ infoTitle }}</h3>
+          <button type="button" class="btn" @click="closeInfo">开始实验</button>
+        </div>
+        <div class="modal-body info-body">
+          <!-- 公式区：katex 渲染 -->
+          <div v-if="infoFormulas.length" class="info-formulas">
+            <div v-for="(formula, idx) in infoFormulas" :key="idx" class="info-formula">
+              <span class="info-formula-tag">{{ formula.tag }}</span>
+              <span class="info-formula-katex" v-html="formula.katex"></span>
+            </div>
+          </div>
+          <!-- 说明区 -->
+          <h4 class="info-section-title">实验说明</h4>
+          <ul class="info-list">
+            <li v-for="(item, idx) in infoDescription" :key="'d' + idx">{{ item }}</li>
+          </ul>
+          <h4 class="info-section-title">使用教程</h4>
+          <ol class="info-list info-ordered">
+            <li v-for="(step, idx) in infoUsage" :key="'u' + idx">{{ step }}</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <!-- 放大弹窗：显示所点图表（含图注/轴/工具栏） -->
+    <div class="modal-overlay" v-if="modalOpen" @click.self="closeModal" role="dialog" aria-modal="true" :aria-label="modalTitle">
+      <div class="modal-dialog">
+        <div class="modal-head">
+          <h3>{{ modalTitle }}</h3>
+          <button type="button" class="btn" @click="closeModal">关闭</button>
+        </div>
+        <div class="modal-body">
+          <div class="phase-host" v-if="modalKind === 'phase'" ref="modalPhaseHost"></div>
+          <canvas v-else-if="modalKind === 'pv'" ref="modalPvCanvas"></canvas>
+          <canvas v-else-if="modalKind === 'pt'" ref="modalPtCanvas"></canvas>
+          <canvas v-else-if="modalKind === 'vt'" ref="modalVtCanvas"></canvas>
+        </div>
+      </div>
+    </div>
 
     <footer
       class="statusbar"
@@ -352,7 +658,7 @@
   </div>
 
   <script>
-    const DEFAULT_SEED = Number(document.body.dataset.defaultSeed || "20260807");
+    const DEFAULT_SEED = Number(document.body.dataset.defaultSeed || "42");
     const { createApp, ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } = Vue;
 
     const CHART_FONT = { family: "'HeatLab CJK', 'Segoe UI', sans-serif" };
@@ -375,38 +681,163 @@
     createApp({
       setup() {
         const topics = [
-          { id: "ideal-gas", kicker: "01", label: "热力学", desc: "P-V 轨迹", lead: "调 T/P，看分子运动与动能论 P-V 实时点。" },
-          { id: "brownian", kicker: "02", label: "布朗运动", desc: "轨迹与 MSD", lead: "花粉受随机碰撞，轨迹与扩散常数估计。" },
-          { id: "maxwell", kicker: "03", label: "麦克斯韦", desc: "速率分布", lead: "分子运动对照理论 PDF 与样本直方图。" },
+          { id: "ideal-gas", kicker: "01", label: "热力学", desc: "P-V 轨迹", lead: "调 T/P 或切换等温/等压/等容过程，观察分子运动与 P-V 状态轨迹。" },
+          { id: "brownian", kicker: "02", label: "布朗运动", desc: "轨迹与扩散", lead: "液体分子随机撞击花粉粒子，产生布朗运动；可观察轨迹、碰撞与扩散常数。" },
+          { id: "maxwell", kicker: "03", label: "麦克斯韦", desc: "速率与水平分量分布", lead: "对照速率 f(v) 与水平速度分量 v_x 的理论分布与样本。" },
           { id: "galton", kicker: "04", label: "伽尔顿板", desc: "二项分布", lead: "粒子逐层下落，槽位分布逼近二项分布。" },
+        ];
+
+        const processModes = [
+          { id: "free", label: "自由" },
+          { id: "isothermal", label: "等温" },
+          { id: "isobaric", label: "等压" },
+          { id: "isochoric", label: "等容" },
         ];
 
         const topic = ref("ideal-gas");
         const seed = ref(DEFAULT_SEED);
         const sessionId = ref("");
-        const paused = ref(false);
+        // 默认暂停：进入页面不自动播放动画，需手动触发（如点击「继续」/投放粒子）
+        const paused = ref(true);
         const error = ref("");
         const busy = ref(false);
+        // 专题信息弹窗：首次进入每个专题时展示实验说明/使用教程
+        const infoOpen = ref(false);
+        const infoTitle = ref("");
+        const infoFormulas = ref([]);
+        const infoDescription = ref([]);
+        const infoUsage = ref([]);
+        const visitedTopics = new Set();
         const sceneCanvas = ref(null);
         const chartCanvas = ref(null);
+        const componentChartCanvas = ref(null);
+        const planarPvCanvas = ref(null);
+        const planarPtCanvas = ref(null);
+        const planarVtCanvas = ref(null);
+        const phaseHost = ref(null);
         const sceneHost = ref(null);
         const chartHost = ref(null);
+        const componentChartHost = ref(null);
+        const modalPhaseHost = ref(null);
+        const modalPvCanvas = ref(null);
+        const modalPtCanvas = ref(null);
+        const modalVtCanvas = ref(null);
+        const modalOpen = ref(false);
+        const modalKind = ref("phase");
+        const modalTitle = ref("P-V-T 相图");
+        let modalPlotReady = false;
+        let modalChart = null;
 
         let chart = null;
+        let componentChart = null;
+        let planarPvChart = null;
+        let planarPtChart = null;
+        let planarVtChart = null;
+        let planarSignature = "";
         let rafId = 0;
         let lastStepAt = 0;
         let chartDirty = true;
         let pendingParam = null;
         let idealFrame = 0;
+        let brownianFrame = 0;
+        // 相图（Plotly 3D + 平面图）渲染节流计数：粒子场景每帧更新，
+        // 相图每 N 帧才真正重建，避免步进时每帧全量重绘 3D 场景。
+        let phaseChartThrottle = 0;
+        let maxwellSweepFrame = 0;
         let resizeObserver = null;
         let resizeTimer = null;
 
-        const ideal = reactive({ temperature_c: 20, pressure_atm: 1.0, data: null });
-        const brownian = reactive({ mass_ratio: 0.5, molecule_count: 40, data: null });
+        const ideal = reactive({ temperature_c: 20, pressure_atm: 1.0, process_mode: "free", data: null });
+        const brownian = reactive({ mass_ratio: 0.5, molecule_count: 40, show_arrow: true, show_vector: true, trail_fade: false, data: null });
         const maxwell = reactive({ temperature_c: 20, data: null });
         const galton = reactive({ particle_count: 50, data: null });
 
+        // 热力学变量自动步进：目标（温度/压强）+ 方向 + 速率（每秒单位量）
+        const sweep = reactive({ enabled: false, target: "temperature_c", direction: 1, rate: 50 });
+        let sweepStopped = false;
+
+        // 麦克斯韦温度自动步进（只有温度一个变量）
+        const maxwellSweep = reactive({ enabled: false, direction: 1, rate: 50 });
+
+        // 各专题实验说明与使用教程（对齐任务文档 full.md 的要求）
+        const TOPIC_INFO = {
+          "ideal-gas": {
+            title: "专题一：热力学 · 理想气体",
+            formulas: [
+              { tag: "状态方程", katex: "PV = nRT" },
+              { tag: "温度单位", katex: "T(\\mathrm{K}) = T(^{\\circ}\\mathrm{C}) + 273.15" },
+            ],
+            description: [
+              "理想气体在封闭空间中做无规则热运动：温度升高、压强变化时体积随之变化，分子热运动加剧，体现温度与压强的微观物理意义。",
+              "可切换等温 / 等压 / 等容准静态过程，观察 P-V 轨迹与三维 P-V-T 相图上的 (P, V, T) 坐标值。",
+            ],
+            usage: [
+              "拖动「温度 T（0–100 °C）」与「压强 P（1–2 atm）」滑条观察分子运动与体积变化。",
+              "在「过程模式」中选择 等温 / 等压 / 等容，相图上叠加理论过程线。",
+              "开启「自动步进」可让温度或压强连续变化，观察准静态过程。",
+            ],
+          },
+          "brownian": {
+            title: "专题二：布朗运动与扩散常数",
+            formulas: [
+              { tag: "扩散常数（二维）", katex: "D = \\frac{\\theta}{\\gamma}" },
+              { tag: "均方位移", katex: "\\langle r^2 \\rangle = 4Dt" },
+            ],
+            description: [
+              "大量液体分子不断撞击花粉粒子，使其产生无规则布朗运动；粒子轨迹与扩散常数反映液体分子热运动的统计规律。",
+              "液体分子之间发生弹性碰撞，密度越高、颗粒越大，花粉受到的随机冲击越多。",
+            ],
+            usage: [
+              "拖动「花粉粒子质量 m/m₀（0–1）」观察重颗粒运动更缓慢。",
+              "调节「液体分子数 n（1–100）」观察液体密度与碰撞频率。",
+              "可用开关显示/隐藏 轨迹方向箭头、液体速度矢量、轨迹渐隐；「清空轨迹」重置。",
+            ],
+          },
+          "maxwell": {
+            title: "专题三：气体分子速率分布（麦克斯韦）",
+            formulas: [
+              { tag: "速率分布", katex: "f(v) = 4\\pi\\left(\\frac{m}{2\\pi kT}\\right)^{3/2} e^{-\\frac{mv^2}{2kT}} v^2" },
+              { tag: "水平分量", katex: "f(v_x) = \\sqrt{\\frac{m}{2\\pi kT}}\\, e^{-\\frac{m v_x^2}{2kT}}" },
+            ],
+            description: [
+              "体积不变时仅改变温度，大量气体分子的速率分布随之变化；分子速率服从麦克斯韦分布。",
+              "右侧双图对照：速率 f(v) 分布与水平速度分量 v_x 的高斯分布（理论曲线 + 蒙特卡洛样本直方图）。",
+            ],
+            usage: [
+              "拖动「温度 T（0–100 °C）」观察分布曲线右移、峰值变矮变宽。",
+              "点「重新采样」生成新的随机样本；开启「自动步进」连续扫过温度。",
+              "对照最概然、平均、均方根速率三个读数。",
+            ],
+          },
+          "galton": {
+            title: "专题四：伽尔顿板（二项分布）",
+            formulas: [
+              { tag: "二项分布", katex: "P(K=k) = \\binom{n}{k}p^k(1-p)^{n-k}" },
+              { tag: "蒙特卡洛", katex: "K \\sim \\mathrm{Binomial}(n,\\tfrac{1}{2})" },
+            ],
+            description: [
+              "大量粒子从钉板上方中央的小孔处下落，经过钉板后落入下方多个狭槽；单个粒子路径不可预测，但槽位分布逼近二项分布。",
+              "采用蒙特卡洛模拟算法生成粒子路径，右侧图注对照理论概率。",
+            ],
+            usage: [
+              "设置「粒子数 N（1–100）」后点「投放粒子」手动开始下落。",
+              "观察粒子从漏斗落入钉板、逐钉弹跳并堆积到各狭槽的过程。",
+              "对比槽位概率与二项分布理论曲线、均值与方差读数。",
+            ],
+          },
+        };
+
         const currentMeta = computed(() => topics.find((item) => item.id === topic.value) || topics[0]);
+        const processLabel = computed(() => {
+          const mode = processModes.find((item) => item.id === ideal.process_mode) || processModes[0];
+          return mode.label;
+        });
+        const sweepTargetLabel = computed(() => (sweep.target === "temperature_c" ? "温度 T" : "压强 P"));
+        const sweepRateLabel = computed(() => {
+          if (sweep.target === "temperature_c") return (sweep.rate * 0.1).toFixed(1) + " °C/s";
+          return (sweep.rate * 0.001).toFixed(3) + " atm/s";
+        });
+        const maxwellSweepRateLabel = computed(() => (maxwellSweep.rate * 0.1).toFixed(1) + " °C/s");
         const sceneTitle = computed(() => {
           if (topic.value === "ideal-gas") return "分子无规则热运动";
           if (topic.value === "brownian") return "花粉粒子运动轨迹";
@@ -414,10 +845,14 @@
           return "伽尔顿板下落";
         });
         const chartTitle = computed(() => {
-          if (topic.value === "ideal-gas") return "P-V 轨迹";
+          if (topic.value === "ideal-gas") return "P-V-T 相图";
           if (topic.value === "brownian") return "均方位移 MSD";
-          if (topic.value === "maxwell") return "速率分布 f(v)";
+          if (topic.value === "maxwell") return "速率 f(v) 与水平分量 v_x 分布";
           return "槽位概率分布";
+        });
+        const componentChartTitle = computed(() => {
+          if (topic.value === "brownian") return "液体分子速率分布（2-D 麦克斯韦）";
+          return "水平速度分量 v_x 分布";
         });
         const statusClass = computed(() => {
           if (error.value) return "error";
@@ -463,13 +898,9 @@
           };
         }
 
-        function ensureChart(config, topicKey) {
-          if (chart) {
-            chart.destroy();
-            chart = null;
-          }
-          const ctx = chartCanvas.value.getContext("2d");
-          chart = new Chart(ctx, {
+        function createChartOn(canvasRef, config, topicKey) {
+          const ctx = canvasRef.value.getContext("2d");
+          const instance = new Chart(ctx, {
             ...config,
             options: {
               ...config.options,
@@ -484,13 +915,37 @@
               },
             },
           });
-          chart._heatTopic = topicKey;
+          instance._heatTopic = topicKey;
+          return instance;
+        }
+
+        function ensureChart(config, topicKey) {
+          if (chart) {
+            chart.destroy();
+            chart = null;
+          }
+          chart = createChartOn(chartCanvas, config, topicKey);
         }
 
         function updateChart(updater) {
           if (!chart) return;
           updater(chart);
           chart.update("none");
+        }
+
+        function ensureComponentChart(config, topicKey) {
+          if (componentChart) {
+            componentChart.destroy();
+            componentChart = null;
+          }
+          if (!componentChartCanvas.value) return;
+          componentChart = createChartOn(componentChartCanvas, config, topicKey);
+        }
+
+        function updateComponentChart(updater) {
+          if (!componentChart) return;
+          updater(componentChart);
+          componentChart.update("none");
         }
 
         function clearScene() {
@@ -555,40 +1010,869 @@
           ctx.globalAlpha = 1;
         }
 
-        function drawPath(path) {
+        function drawIdealGas3D(data) {
           const scene = clearScene();
-          if (!scene || !path || path.length < 2) return;
+          if (!scene) return;
           const { ctx, width, height } = scene;
-          const xs = path.map((p) => p[0]);
-          const ys = path.map((p) => p[1]);
-          const minX = Math.min(...xs);
-          const maxX = Math.max(...xs);
-          const minY = Math.min(...ys);
-          const maxY = Math.max(...ys);
+          const length = data.box_length ?? 1;
+          const boxHeight = data.box_height ?? 1;
+          const depth = data.box_depth ?? 1;
+
+          // 等轴-ish 投影：绕 Y 旋转 -30°，再绕 X 倾斜 30°
+          const rotY = -Math.PI / 6;
+          const tilt = Math.PI / 6;
+          const cosY = Math.cos(rotY);
+          const sinY = Math.sin(rotY);
+          const cosT = Math.cos(tilt);
+          const sinT = Math.sin(tilt);
+
+          function project(point) {
+            const x = point[0] - length / 2;
+            const y = point[1] - boxHeight / 2;
+            const z = point[2] - depth / 2;
+            const rx = x * cosY + z * sinY;
+            const rz = -x * sinY + z * cosY;
+            const ry = y * cosT - rz * sinT;
+            const rz2 = y * sinT + rz * cosT;
+            return { x: rx, y: ry, z: rz2 };
+          }
+
+          const corners = [
+            [0, 0, 0], [length, 0, 0], [0, boxHeight, 0], [length, boxHeight, 0],
+            [0, 0, depth], [length, 0, depth], [0, boxHeight, depth], [length, boxHeight, depth],
+          ].map(project);
+
+          let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+          for (const corner of corners) {
+            minX = Math.min(minX, corner.x);
+            maxX = Math.max(maxX, corner.x);
+            minY = Math.min(minY, corner.y);
+            maxY = Math.max(maxY, corner.y);
+          }
           const pad = 30;
-          const spanX = Math.max(maxX - minX, 0.2);
-          const spanY = Math.max(maxY - minY, 0.2);
-          const usableW = width - 2 * pad;
-          const usableH = height - 2 * pad;
-          const mapX = (x) => pad + ((x - minX) / spanX) * usableW;
-          const mapY = (y) => pad + (1 - (y - minY) / spanY) * usableH;
-
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = COLORS.blue;
-          ctx.beginPath();
-          path.forEach((point, index) => {
-            const x = mapX(point[0]);
-            const y = mapY(point[1]);
-            if (index === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+          const scale = Math.min(
+            (width - 2 * pad) / Math.max(maxX - minX, 1e-6),
+            (height - 2 * pad) / Math.max(maxY - minY, 1e-6)
+          );
+          const centerX = width / 2;
+          const centerY = height / 2;
+          const map = (corner) => ({
+            x: centerX + corner.x * scale,
+            y: centerY - corner.y * scale,
           });
-          ctx.stroke();
 
-          const last = path[path.length - 1];
-          ctx.fillStyle = COLORS.yellow;
+          // 绘制盒子 12 条棱
+          const edges = [[0,1],[0,2],[1,3],[2,3],[4,5],[4,6],[5,7],[6,7],[0,4],[1,5],[2,6],[3,7]];
+          ctx.strokeStyle = "#3e3e42";
+          ctx.lineWidth = 1.2;
+          for (const [a, b] of edges) {
+            const p1 = map(corners[a]);
+            const p2 = map(corners[b]);
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+          }
+
+          // 粒子按速率着色：慢=蓝，快=黄
+          const positions = data.positions || [];
+          const speeds = data.speeds || [];
+          let maxSpeed = 1;
+          for (const speed of speeds) maxSpeed = Math.max(maxSpeed, speed);
+          for (let i = 0; i < positions.length; i += 1) {
+            const point = map(project(positions[i]));
+            const ratio = Math.min(1, (speeds[i] || 0) / maxSpeed);
+            const r = Math.round(55 + (220 - 55) * ratio);
+            const g = Math.round(148 + (220 - 148) * ratio);
+            const b = Math.round(255 - (255 - 170) * ratio);
+            ctx.beginPath();
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.globalAlpha = 0.9;
+            ctx.arc(point.x, point.y, 3.2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+        }
+
+        // P-V-T 相图：使用 Plotly 3D（PV=nRT 曲面 + 轨迹 + 悬停坐标）
+        let phasePlotReady = false;
+        let phaseSignature = "";
+
+        // 3D 相图：保留用户旋转/缩放视角，不被每帧重绘重置
+        let phaseCamera = { eye: { x: 1.8, y: 1.8, z: 0.75 }, up: { x: 0, y: 0, z: 1 }, center: { x: 0, y: 0, z: 0 } };
+
+        function renderPhasePlotly(data) {
+          const host = phaseHost.value;
+          if (!host || !data) return;
+          const history = data.phase_history || [];
+          const processPoints = (data.process_line_3d && data.process_line_3d.points || []);
+          const statePoint = history.length ? [history[history.length - 1]] : [];
+
+          // 数据未变化时跳过重绘（每帧 step 会重复进入）
+          const signature = [
+            history.length,
+            history.length ? history[history.length - 1].join(",") : "",
+            processPoints.length,
+            data.process_mode,
+            data.volume_litre.toFixed(4),
+          ].join("|");
+          if (phasePlotReady && signature === phaseSignature) return;
+          phaseSignature = signature;
+
+          const axis = {
+            color: AXIS.color,
+            gridcolor: AXIS.grid,
+            showbackground: true,
+            backgroundcolor: COLORS.editor,
+          };
+          const layout = {
+            paper_bgcolor: COLORS.editor,
+            plot_bgcolor: COLORS.editor,
+            autosize: true,
+            margin: { l: 10, r: 10, t: 24, b: 10 },
+            font: { color: COLORS.fg, family: "'HeatLab CJK', 'Segoe UI', sans-serif" },
+            legend: {
+              orientation: "h",
+              x: 0.02,
+              y: 1.04,
+              font: { color: COLORS.fg, size: 11 },
+            },
+            scene: {
+              xaxis: { title: "P / atm", ...axis, range: [0.9, 2.1] },
+              yaxis: { title: "V / L", ...axis },
+              zaxis: { title: "T / K", ...axis, range: [270, 380] },
+              camera: phaseCamera,
+              aspectmode: "manual",
+              aspectratio: { x: 1.15, y: 1, z: 1.05 },
+            },
+            hoverlabel: {
+              bgcolor: COLORS.editorAlt,
+              bordercolor: "#3e3e42",
+              font: { color: "#ffffff", family: "'HeatLab CJK', 'Segoe UI', sans-serif", size: 12 },
+            },
+            dragmode: "orbit",
+          };
+
+          const traces = [];
+
+          // PV=nRT 完整曲面（借鉴开源 meshgrid 画法）
+          const surface = data.pvt_surface;
+          if (surface && surface.x && surface.y) {
+            traces.push({
+              type: "surface",
+              name: "PV=nRT 曲面",
+              x: surface.x,
+              y: surface.y,
+              z: surface.z,
+              opacity: 0.14,
+              showscale: false,
+              contours: {
+                x: { show: true, color: "#3e6a9e", width: 1 },
+                y: { show: true, color: "#3e6a9e", width: 1 },
+                z: { show: true, color: "#3e6a9e", width: 1 },
+              },
+              colorscale: [[0, "#16324f"], [0.5, "#2f6db3"], [1, "#5aa8e8"]],
+              hovertemplate: "P=%{x:.2f} atm<br>V=%{y:.3f} L<br>T=%{z:.2f} K<extra>PV=nRT</extra>",
+            });
+          }
+
+          // 设定路径：细而亮，不遮挡曲面
+          if (history.length > 1) {
+            traces.push({
+              type: "scatter3d",
+              mode: "lines",
+              name: "设定路径 (PV=nRT)",
+              x: history.map((p) => p[0]),
+              y: history.map((p) => p[1]),
+              z: history.map((p) => p[2]),
+              line: { color: COLORS.yellow, width: 2.5 },
+              hovertemplate: "P=%{x:.2f} atm<br>V=%{y:.3f} L<br>T=%{z:.2f} K<extra>设定路径</extra>",
+            });
+          }
+
+          // 当前过程模式的等值线：统一虚线强调，与曲面网格区分开
+          if (processPoints.length > 1) {
+            traces.push({
+              type: "scatter3d",
+              mode: "lines",
+              name: "理论过程线",
+              x: processPoints.map((p) => p[0]),
+              y: processPoints.map((p) => p[1]),
+              z: processPoints.map((p) => p[2]),
+              line: { color: "#ff9f43", width: 4, dash: "dash" },
+              hovertemplate: "P=%{x:.2f} atm<br>V=%{y:.3f} L<br>T=%{z:.2f} K<extra>理论过程线</extra>",
+            });
+          }
+
+          // 当前状态点：小尺寸高亮，避免球太大
+          if (statePoint.length) {
+            traces.push({
+              type: "scatter3d",
+              mode: "markers",
+              name: "当前状态",
+              x: statePoint.map((p) => p[0]),
+              y: statePoint.map((p) => p[1]),
+              z: statePoint.map((p) => p[2]),
+              marker: {
+                color: COLORS.blue,
+                size: 5,
+                line: { color: "#ffffff", width: 1 },
+              },
+              hovertemplate: `当前状态<br>(P, V, T) = (${statePoint[0][0].toFixed(2)} atm, ${statePoint[0][1].toFixed(3)} L, ${statePoint[0][2].toFixed(2)} K)<extra></extra>`,
+            });
+          }
+
+          const config = {
+            displayModeBar: true,
+            responsive: true,
+            scrollZoom: true,
+            modeBarButtonsToRemove: ["lasso2d", "select2d", "autoScale2d", "toggleSpikelines", "hoverClosest3d"],
+            displaylogo: false,
+          };
+          if (phasePlotReady) {
+            // 保留用户 camera：从当前图 layout.scene.camera 读取后合并
+            const currentLayout = (host.data && host.layout) ? host.layout : {};
+            const currentCamera = currentLayout.scene && currentLayout.scene.camera;
+            if (currentCamera) phaseCamera = currentCamera;
+            Plotly.react(host, traces, { ...layout, scene: { ...layout.scene, camera: phaseCamera } }, config);
+          } else {
+            phasePlotReady = true;
+            Plotly.newPlot(host, traces, layout, config);
+          }
+        }
+
+        // 热力学平面图：P-V（等温线族）、P-T（等容线族）、V-T（等压线族）
+        function destroyPlanarCharts() {
+          for (const instance of [planarPvChart, planarPtChart, planarVtChart]) {
+            if (instance) instance.destroy();
+          }
+          planarPvChart = null;
+          planarPtChart = null;
+          planarVtChart = null;
+          planarSignature = "";
+        }
+
+        // ---- 放大弹窗 ----
+        const MODAL_TITLES = {
+          phase: "P-V-T 相图",
+          pv: "P-V 图（等温线族）",
+          pt: "P-T 图（等容线族）",
+          vt: "V-T 图（等压线族）",
+        };
+
+        function openModal(kind) {
+          if (!ideal.data) return;
+          modalKind.value = kind;
+          modalTitle.value = MODAL_TITLES[kind] || "图表";
+          modalOpen.value = true;
+          modalPlotReady = false;
+          modalChart = null;
+          nextTick(() => renderModal());
+        }
+
+        function closeModal() {
+          modalOpen.value = false;
+          if (modalChart) {
+            modalChart.destroy();
+            modalChart = null;
+          }
+          modalPlotReady = false;
+        }
+
+        function renderModal() {
+          if (!modalOpen.value || !ideal.data) return;
+          const data = ideal.data;
+          if (modalKind.value === "phase") {
+            const host = modalPhaseHost.value;
+            if (!host) return;
+            const traces = buildPhaseTraces(data);
+            const layout = buildPhaseLayout();
+            layout.autosize = true;
+            const config = {
+              displayModeBar: true,
+              responsive: true,
+              scrollZoom: true,
+              modeBarButtonsToRemove: ["lasso2d", "select2d", "autoScale2d", "toggleSpikelines", "hoverClosest3d"],
+              displaylogo: false,
+            };
+            if (modalPlotReady) {
+              Plotly.react(host, traces, layout, config);
+            } else {
+              modalPlotReady = true;
+              Plotly.newPlot(host, traces, layout, config);
+            }
+          } else {
+            const canvas = {
+              pv: modalPvCanvas,
+              pt: modalPtCanvas,
+              vt: modalVtCanvas,
+            }[modalKind.value];
+            if (!canvas || !canvas.value) return;
+            const kind = modalKind.value;
+            const familyKey = kind === "pv" ? "pv" : kind === "pt" ? "pt" : "vt";
+            const planar = data.planar || {};
+            const family = planar[familyKey] || [];
+            const history = data.phase_history || [];
+            const last = history.length ? history[history.length - 1] : null;
+            const current = last
+              ? { p: last[0], v: last[1], t: last[2] }
+              : { p: data.pressure_atm, v: data.volume_litre, t: data.temperature_k };
+
+            const palette = ["#3794ff", "#5aa8e8", "#89d185", "#dcdcaa"];
+            const datasets = family.map((fam, i) => ({
+              type: "line",
+              label: kind === "pv" ? `等温 ${(fam.T - 273.15).toFixed(0)} °C`
+                : kind === "pt" ? `等容 V=${fam.V.toFixed(4)} L`
+                : `等压 P=${fam.P.toFixed(2)} atm`,
+              data: buildPlanarDataset(fam, kind),
+              borderColor: palette[i % palette.length],
+              borderWidth: 1.5,
+              pointRadius: 0,
+              tension: 0,
+            }));
+            datasets.push({
+              type: "scatter",
+              label: "当前状态",
+              data: [kind === "pv" ? { x: current.p, y: current.v }
+                : kind === "pt" ? { x: current.t, y: current.p }
+                : { x: current.t, y: current.v }],
+              pointRadius: 5,
+              backgroundColor: COLORS.blue,
+              borderColor: COLORS.strong,
+              borderWidth: 1,
+            });
+            const scales = {
+              pv: { x: axisScale("P / atm"), y: axisScale("V / L") },
+              pt: { x: axisScale("T / K"), y: axisScale("P / atm") },
+              vt: { x: axisScale("T / K"), y: axisScale("V / L") },
+            };
+            if (modalChart) {
+              modalChart.data.datasets = datasets;
+              modalChart.options.scales = scales[kind];
+              modalChart.update("none");
+            } else {
+              modalChart = createChartOn(canvas, {
+                type: "scatter",
+                data: { datasets },
+                options: { scales: scales[kind] },
+              }, "modal-" + kind);
+            }
+          }
+        }
+
+        function buildPhaseTraces(data) {
+          const history = data.phase_history || [];
+          const processPoints = (data.process_line_3d && data.process_line_3d.points || []);
+          const statePoint = history.length ? [history[history.length - 1]] : [];
+          const traces = [];
+          const surface = data.pvt_surface;
+          if (surface && surface.x && surface.y) {
+            traces.push({
+              type: "surface",
+              name: "PV=nRT 曲面",
+              x: surface.x,
+              y: surface.y,
+              z: surface.z,
+              opacity: 0.14,
+              showscale: false,
+              contours: {
+                x: { show: true, color: "#3e6a9e", width: 1 },
+                y: { show: true, color: "#3e6a9e", width: 1 },
+                z: { show: true, color: "#3e6a9e", width: 1 },
+              },
+              colorscale: [[0, "#16324f"], [0.5, "#2f6db3"], [1, "#5aa8e8"]],
+              hovertemplate: "P=%{x:.2f} atm<br>V=%{y:.3f} L<br>T=%{z:.2f} K<extra>PV=nRT</extra>",
+            });
+          }
+          if (history.length > 1) {
+            traces.push({
+              type: "scatter3d",
+              mode: "lines",
+              name: "设定路径 (PV=nRT)",
+              x: history.map((p) => p[0]),
+              y: history.map((p) => p[1]),
+              z: history.map((p) => p[2]),
+              line: { color: COLORS.yellow, width: 2.5 },
+              hovertemplate: "P=%{x:.2f} atm<br>V=%{y:.3f} L<br>T=%{z:.2f} K<extra>设定路径</extra>",
+            });
+          }
+          if (processPoints.length > 1) {
+            traces.push({
+              type: "scatter3d",
+              mode: "lines",
+              name: "理论过程线",
+              x: processPoints.map((p) => p[0]),
+              y: processPoints.map((p) => p[1]),
+              z: processPoints.map((p) => p[2]),
+              line: { color: "#ff9f43", width: 4, dash: "dash" },
+              hovertemplate: "P=%{x:.2f} atm<br>V=%{y:.3f} L<br>T=%{z:.2f} K<extra>理论过程线</extra>",
+            });
+          }
+          if (statePoint.length) {
+            traces.push({
+              type: "scatter3d",
+              mode: "markers",
+              name: "当前状态",
+              x: statePoint.map((p) => p[0]),
+              y: statePoint.map((p) => p[1]),
+              z: statePoint.map((p) => p[2]),
+              marker: { color: COLORS.blue, size: 5, line: { color: "#ffffff", width: 1 } },
+              hovertemplate: `当前状态<br>(P, V, T) = (${statePoint[0][0].toFixed(2)} atm, ${statePoint[0][1].toFixed(3)} L, ${statePoint[0][2].toFixed(2)} K)<extra></extra>`,
+            });
+          }
+          return traces;
+        }
+
+        function buildPhaseLayout() {
+          const axis = {
+            color: AXIS.color,
+            gridcolor: AXIS.grid,
+            showbackground: true,
+            backgroundcolor: COLORS.editor,
+          };
+          return {
+            paper_bgcolor: COLORS.editor,
+            plot_bgcolor: COLORS.editor,
+            autosize: true,
+            margin: { l: 10, r: 10, t: 40, b: 10 },
+            font: { color: COLORS.fg, family: "'HeatLab CJK', 'Segoe UI', sans-serif" },
+            legend: {
+              orientation: "h",
+              x: 0.02,
+              y: 1.1,
+              font: { color: COLORS.fg, size: 11 },
+            },
+            scene: {
+              xaxis: { title: "P / atm", ...axis, range: [0.9, 2.1] },
+              yaxis: { title: "V / L", ...axis },
+              zaxis: { title: "T / K", ...axis, range: [270, 380] },
+              camera: phaseCamera,
+              aspectmode: "manual",
+              aspectratio: { x: 1.15, y: 1, z: 1.05 },
+            },
+            hoverlabel: {
+              bgcolor: COLORS.editorAlt,
+              bordercolor: "#3e3e42",
+              font: { color: "#ffffff", family: "'HeatLab CJK', 'Segoe UI', sans-serif", size: 12 },
+            },
+            dragmode: "orbit",
+          };
+        }
+
+        function buildPlanarDataset(family, kind) {
+          if (kind === "pv") {
+            return family.P.map((p, j) => ({ x: p, y: family.V[j] }));
+          }
+          if (kind === "pt") {
+            return family.T.map((t, j) => ({ x: t, y: family.P[j] }));
+          }
+          return family.T.map((t, j) => ({ x: t, y: family.V[j] }));
+        }
+
+        function renderPlanarCharts(data) {
+          if (!planarPvCanvas.value || !data || !data.planar) return;
+          const planar = data.planar;
+          const history = data.phase_history || [];
+          const last = history.length ? history[history.length - 1] : null;
+
+          // 等值线族仅在 T/P/V 变化时重建；状态点/过程线每帧轻量更新
+          const signature = [
+            data.process_mode,
+            data.temperature_c.toFixed(0),
+            data.pressure_atm.toFixed(2),
+            data.volume_litre.toFixed(4),
+          ].join("|");
+          const rebuild = !planarPvChart || planarSignature !== signature;
+          planarSignature = signature;
+
+          const palette = ["#3794ff", "#5aa8e8", "#89d185", "#dcdcaa"];
+          const currentPt = last
+            ? { p: last[0], v: last[1], t: last[2] }
+            : { p: data.pressure_atm, v: data.volume_litre, t: data.temperature_k };
+
+          // 当前过程线（P-V 平面）
+          const processLine = (data.process_line && data.process_line.points) || [];
+
+          if (rebuild) {
+            // P-V 图：等温线族 + 当前过程线 + 状态点
+            const pvDatasets = planar.pv.map((family, i) => ({
+              type: "line",
+              label: `等温 ${(family.T - 273.15).toFixed(0)} °C`,
+              data: buildPlanarDataset(family, "pv"),
+              borderColor: palette[i % palette.length],
+              borderWidth: 1.2,
+              pointRadius: 0,
+              tension: 0,
+            }));
+            if (processLine.length > 1) {
+              pvDatasets.push({
+                type: "line",
+                label: "当前过程",
+                data: processLine.map((pt) => ({ x: pt[0], y: pt[1] })),
+                borderColor: "#ff9f43",
+                borderWidth: 2,
+                borderDash: [6, 4],
+                pointRadius: 0,
+                tension: 0,
+              });
+            }
+            pvDatasets.push({
+              type: "scatter",
+              label: "当前状态",
+              data: [{ x: currentPt.p, y: currentPt.v }],
+              pointRadius: 4,
+              backgroundColor: COLORS.blue,
+              borderColor: COLORS.strong,
+              borderWidth: 1,
+            });
+            if (planarPvChart) planarPvChart.destroy();
+            planarPvChart = createChartOn(planarPvCanvas, {
+              type: "scatter",
+              data: { datasets: pvDatasets },
+              options: {
+                scales: { x: axisScale("P / atm"), y: axisScale("V / L") },
+              },
+            }, "planar-pv");
+
+            // P-T 图：等容线族 + 状态点
+            const ptDatasets = planar.pt.map((family, i) => ({
+              type: "line",
+              label: `等容 V=${family.V.toFixed(4)} L`,
+              data: buildPlanarDataset(family, "pt"),
+              borderColor: palette[i % palette.length],
+              borderWidth: 1.2,
+              pointRadius: 0,
+              tension: 0,
+            }));
+            ptDatasets.push({
+              type: "scatter",
+              label: "当前状态",
+              data: [{ x: currentPt.t, y: currentPt.p }],
+              pointRadius: 4,
+              backgroundColor: COLORS.blue,
+              borderColor: COLORS.strong,
+              borderWidth: 1,
+            });
+            if (planarPtChart) planarPtChart.destroy();
+            planarPtChart = createChartOn(planarPtCanvas, {
+              type: "scatter",
+              data: { datasets: ptDatasets },
+              options: {
+                scales: { x: axisScale("T / K"), y: axisScale("P / atm") },
+              },
+            }, "planar-pt");
+
+            // V-T 图：等压线族 + 状态点
+            const vtDatasets = planar.vt.map((family, i) => ({
+              type: "line",
+              label: `等压 P=${family.P.toFixed(2)} atm`,
+              data: buildPlanarDataset(family, "vt"),
+              borderColor: palette[i % palette.length],
+              borderWidth: 1.2,
+              pointRadius: 0,
+              tension: 0,
+            }));
+            vtDatasets.push({
+              type: "scatter",
+              label: "当前状态",
+              data: [{ x: currentPt.t, y: currentPt.v }],
+              pointRadius: 4,
+              backgroundColor: COLORS.blue,
+              borderColor: COLORS.strong,
+              borderWidth: 1,
+            });
+            if (planarVtChart) planarVtChart.destroy();
+            planarVtChart = createChartOn(planarVtCanvas, {
+              type: "scatter",
+              data: { datasets: vtDatasets },
+              options: {
+                scales: { x: axisScale("T / K"), y: axisScale("V / L") },
+              },
+            }, "planar-vt");
+          } else {
+            // 轻量更新：只挪动状态点
+            if (planarPvChart && planarPvChart.data.datasets.length) {
+              const ds = planarPvChart.data.datasets;
+              ds[ds.length - 1].data = [{ x: currentPt.p, y: currentPt.v }];
+              planarPvChart.update("none");
+            }
+            if (planarPtChart && planarPtChart.data.datasets.length) {
+              const ds = planarPtChart.data.datasets;
+              ds[ds.length - 1].data = [{ x: currentPt.t, y: currentPt.p }];
+              planarPtChart.update("none");
+            }
+            if (planarVtChart && planarVtChart.data.datasets.length) {
+              const ds = planarVtChart.data.datasets;
+              ds[ds.length - 1].data = [{ x: currentPt.t, y: currentPt.v }];
+              planarVtChart.update("none");
+            }
+          }
+        }
+
+        function drawBrownian(data) {
+          const scene = clearScene();
+          if (!scene) return;
+          const { ctx, width, height } = scene;
+          const pad = 34;
+          const boxL = pad;
+          const boxT = pad;
+          const boxW = width - 2 * pad;
+          const boxH = height - 2 * pad;
+          const mapX = (x) => boxL + x * boxW;
+          const mapY = (y) => boxT + (1 - y) * boxH;
+
+          // 1) 容器边框：淡蓝描边，模拟显微观察池
+          ctx.save();
+          ctx.strokeStyle = "rgba(55, 148, 255, 0.38)";
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(boxL + 0.5, boxT + 0.5, boxW, boxH);
+          ctx.restore();
+
+          // 2) 花粉轨迹：默认完整保留；开启「轨迹渐隐」后旧段暗淡 → 新段鲜亮
+          const path = data.path || [];
+          if (path.length > 1) {
+            const trailFade = brownian.trail_fade;
+            const segCount = trailFade ? Math.min(path.length - 1, 260) : path.length - 1;
+            const startIdx = path.length - 1 - segCount;
+            for (let i = startIdx; i < path.length - 1; i += 1) {
+              let alpha;
+              let lineWidth;
+              if (trailFade) {
+                const progress = (i - startIdx) / segCount;
+                alpha = 0.08 + 0.85 * progress;
+                lineWidth = 0.8 + 1.4 * progress;
+              } else {
+                alpha = 0.55;
+                lineWidth = 1.2;
+              }
+              ctx.strokeStyle = `rgba(94, 186, 255, ${alpha.toFixed(3)})`;
+              ctx.lineWidth = lineWidth;
+              ctx.beginPath();
+              const p1 = path[i];
+              const p2 = path[i + 1];
+              ctx.moveTo(mapX(p1[0]), mapY(p1[1]));
+              ctx.lineTo(mapX(p2[0]), mapY(p2[1]));
+              ctx.stroke();
+            }
+          }
+
+          // 3) 液体分子：速度着色的热运动粒子 + 运动方向短尾巴
+          //    （借鉴主流物理模拟：分子带速度矢量线，快速分子更亮）
+          const liquids = data.liquid_positions || [];
+          const liquidVels = data.liquid_velocities || [];
+          const sigma = data.liquid_sigma || 1;
+          for (let i = 0; i < liquids.length; i += 1) {
+            const liquid = liquids[i];
+            const lx = mapX(liquid[0]);
+            const ly = mapY(liquid[1]);
+            const vel = liquidVels[i] || [0, 0];
+            const speed = Math.hypot(vel[0], vel[1]);
+            const heat = Math.min(1, speed / (2.5 * sigma));
+            const r = Math.round(55 + 170 * heat);
+            const g = Math.round(148 + 80 * heat);
+            const b = 255;
+            ctx.beginPath();
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.15)`;
+            ctx.arc(lx, ly, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.7)`;
+            ctx.arc(lx, ly, 2.0, 0, Math.PI * 2);
+            ctx.fill();
+            if (brownian.show_vector && speed > 0.05) {
+              const tailLen = Math.min(8, 2 + speed * 5 * (boxH / 480));
+              ctx.save();
+              ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.5)`;
+              ctx.lineWidth = 1.2;
+              ctx.lineCap = "round";
+              ctx.beginPath();
+              ctx.moveTo(lx, ly);
+              ctx.lineTo(lx + (vel[0] / speed) * tailLen, ly - (vel[1] / speed) * tailLen);
+              ctx.stroke();
+              ctx.restore();
+            }
+          }
+
+          // 4) 碰撞高亮：花粉表面的脉冲亮点（撞击瞬间的视觉反馈）
+          const hits = data.recent_collisions || [];
+          if (hits.length) {
+            const pulse = 3.5 + 1.6 * Math.sin((performance.now() % 700) / 700 * Math.PI);
+            for (const hit of hits) {
+              const hx = mapX(hit[0]);
+              const hy = mapY(hit[1]);
+              ctx.beginPath();
+              ctx.fillStyle = "rgba(210, 255, 210, 0.9)";
+              ctx.arc(hx, hy, pulse, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.beginPath();
+              ctx.strokeStyle = "rgba(210, 255, 210, 0.6)";
+              ctx.lineWidth = 1.2;
+              ctx.arc(hx, hy, pulse + 2.5, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+          }
+
+          // 5) 花粉粒子：金色径向渐变大球 + 表面颗粒斑点 + 光晕 + 高光
+          //    半径系数刻意压小（0.6），避免盖住下方轨迹
+          const pollenPos = data.pollen_position || [0.5, 0.5];
+          const px = mapX(pollenPos[0]);
+          const py = mapY(pollenPos[1]);
+          const pollenRadiusPx = Math.max(6, (data.pollen_radius || 0.08) * boxH * 0.6);
+          ctx.save();
+          ctx.shadowColor = "rgba(255, 200, 80, 0.5)";
+          ctx.shadowBlur = 12;
+          const grainGrad = ctx.createRadialGradient(
+            px - pollenRadiusPx * 0.3, py - pollenRadiusPx * 0.3, pollenRadiusPx * 0.1,
+            px, py, pollenRadiusPx
+          );
+          grainGrad.addColorStop(0, "#fff0c0");
+          grainGrad.addColorStop(0.45, "#f5c56b");
+          grainGrad.addColorStop(1, "#c8873a");
           ctx.beginPath();
-          ctx.arc(mapX(last[0]), mapY(last[1]), 4.2, 0, Math.PI * 2);
+          ctx.fillStyle = grainGrad;
+          ctx.arc(px, py, pollenRadiusPx, 0, Math.PI * 2);
           ctx.fill();
+          ctx.restore();
+          // 表面颗粒斑点：模拟花粉粒凹凸不平的表面
+          ctx.save();
+          ctx.fillStyle = "rgba(150, 96, 40, 0.4)";
+          for (let k = 0; k < 8; k += 1) {
+            const ang = (k / 8) * Math.PI * 2 + 0.35;
+            ctx.beginPath();
+            ctx.arc(
+              px + Math.cos(ang) * pollenRadiusPx * 0.55,
+              py + Math.sin(ang) * pollenRadiusPx * 0.55,
+              pollenRadiusPx * 0.12,
+              0, Math.PI * 2
+            );
+            ctx.fill();
+          }
+          ctx.restore();
+          ctx.beginPath();
+          ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+          ctx.arc(px - pollenRadiusPx * 0.32, py - pollenRadiusPx * 0.32, pollenRadiusPx * 0.18, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 6) 方向箭头（可开关）：箭杆从花粉表面向外延伸，长度 ∝ 速率
+          //    之前起点在球内部导致杆被球盖住、方向显得混乱，这里改为
+          //    从表面（半径外 5%）开始，让杆清晰伸出球体
+          if (brownian.show_arrow) {
+            const velocity = data.pollen_velocity || [0, 0];
+            const speed = Math.hypot(velocity[0], velocity[1]);
+            const shaftLength = Math.min(70, 14 + speed * 52 * (boxH / 480));
+            if (speed > 1e-6 && shaftLength > 10) {
+              const directionX = velocity[0] / speed;
+              const directionY = -velocity[1] / speed;
+              const startX = px + directionX * pollenRadiusPx * 1.05;
+              const startY = py + directionY * pollenRadiusPx * 1.05;
+              const tipX = startX + directionX * shaftLength;
+              const tipY = startY + directionY * shaftLength;
+              const angle = Math.atan2(directionY, directionX);
+              const headSize = 12;
+              const drawArrow = (color, lineWidth) => {
+                ctx.save();
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color;
+                ctx.lineWidth = lineWidth;
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(tipX, tipY);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(tipX, tipY);
+                ctx.lineTo(tipX - headSize * Math.cos(angle - 0.42), tipY - headSize * Math.sin(angle - 0.42));
+                ctx.lineTo(tipX - headSize * Math.cos(angle + 0.42), tipY - headSize * Math.sin(angle + 0.42));
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+              };
+              drawArrow("rgba(18, 30, 22, 0.85)", 5.2);   // 深色外描边
+              drawArrow("rgba(190, 255, 122, 1.0)", 2.6); // 亮绿内芯
+            }
+          }
+
+          // 7) 图注：说明画面上每种元素分别代表什么
+          const legendItems = [
+            { kind: "dot", color: "rgba(96, 170, 255, 0.9)", label: "液体分子" },
+            { kind: "line", color: "rgba(94, 186, 255, 0.9)", label: "花粉轨迹" },
+            { kind: "circle", color: "#f5c56b", label: "花粉粒子" },
+            { kind: "glow", color: "#d2ffd2", label: "碰撞高亮" },
+            { kind: "arrow", color: "#b6ff6e", label: "运动方向" },
+          ];
+          const legendX = boxL + 10;
+          const legendY = boxT + 10;
+          const legendItemH = 17;
+          const legendPad = 9;
+          const legendW = 118;
+          const legendH = legendItems.length * legendItemH + legendPad * 1.5;
+          ctx.save();
+          ctx.fillStyle = "rgba(30, 30, 30, 0.82)";
+          ctx.strokeStyle = "rgba(62, 62, 66, 0.9)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(legendX, legendY, legendW, legendH, 6);
+          ctx.fill();
+          ctx.stroke();
+          ctx.font = "11px 'HeatLab CJK', 'Segoe UI', sans-serif";
+          ctx.textBaseline = "middle";
+          legendItems.forEach((item, index) => {
+            const y = legendY + legendPad + index * legendItemH + legendItemH / 2;
+            const symbolX = legendX + 11;
+            const textX = legendX + 24;
+            ctx.fillStyle = "#cccccc";
+            ctx.textAlign = "left";
+            if (item.kind === "dot") {
+              ctx.fillStyle = item.color;
+              ctx.beginPath();
+              ctx.arc(symbolX, y, 2.6, 0, Math.PI * 2);
+              ctx.fill();
+            } else if (item.kind === "line") {
+              ctx.strokeStyle = item.color;
+              ctx.lineWidth = 2;
+              ctx.lineCap = "round";
+              ctx.beginPath();
+              ctx.moveTo(symbolX - 5, y);
+              ctx.lineTo(symbolX + 5, y);
+              ctx.stroke();
+            } else if (item.kind === "circle") {
+              ctx.fillStyle = item.color;
+              ctx.strokeStyle = "#c8873a";
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.arc(symbolX, y, 4.5, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
+            } else if (item.kind === "glow") {
+              ctx.strokeStyle = item.color;
+              ctx.lineWidth = 1.4;
+              ctx.beginPath();
+              ctx.arc(symbolX, y, 4.5, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.fillStyle = item.color;
+              ctx.beginPath();
+              ctx.arc(symbolX, y, 2.2, 0, Math.PI * 2);
+              ctx.fill();
+            } else if (item.kind === "arrow") {
+              ctx.strokeStyle = item.color;
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.moveTo(symbolX - 6, y);
+              ctx.lineTo(symbolX + 5, y);
+              ctx.stroke();
+              ctx.fillStyle = item.color;
+              ctx.beginPath();
+              ctx.moveTo(symbolX + 5, y);
+              ctx.lineTo(symbolX + 1, y - 3.5);
+              ctx.lineTo(symbolX + 1, y + 3.5);
+              ctx.closePath();
+              ctx.fill();
+            }
+            ctx.fillStyle = "#cccccc";
+            ctx.fillText(item.label, textX, y);
+          });
+          ctx.restore();
         }
 
         function drawGalton(data) {
@@ -596,55 +1880,414 @@
           if (!scene || !data) return;
           const { ctx, width, height } = scene;
           const rows = data.rows || 12;
-          const padX = 40;
-          const padY = 28;
-          const usableW = width - 2 * padX;
-          const usableH = height - 2 * padY;
-          const mapX = (x) => padX + ((x + rows) / (2 * rows)) * usableW;
-          const mapY = (row) => padY + (row / rows) * usableH;
 
-          ctx.fillStyle = "#6e6e6e";
+          // ---- 几何布局：漏斗 → 钉板 → 狭槽（参考开源 quincunx 呈现） ----
+          const boardLeft = 50;
+          const boardRight = width - 50;
+          const boardWidth = boardRight - boardLeft;
+          const funnelTop = 52;
+          const pegTopY = 118;
+          const pegBottomY = height - 158;
+          const slotH = 104;
+          const pegSpanY = Math.max(pegBottomY - pegTopY, rows * 8);
+          const verticalSpacing = pegSpanY / rows;
+          const horizontalSpacing = boardWidth / (2 * rows);
+          const centerX = width / 2;
+          const mapX = (x) => centerX + x * horizontalSpacing;
+          const mapY = (row) => pegTopY + row * verticalSpacing;
+
+          // 1) 板框：木质感深色底板 + 内边框（对齐主流 bean machine 视觉）
+          ctx.save();
+          const boardGrad = ctx.createLinearGradient(0, pegTopY - 60, 0, height);
+          boardGrad.addColorStop(0, "#2b2118");
+          boardGrad.addColorStop(0.4, "#241c14");
+          boardGrad.addColorStop(1, "#1b150e");
+          ctx.fillStyle = boardGrad;
+          ctx.fillRect(boardLeft - 12, funnelTop - 14, boardWidth + 24, height - funnelTop + 14);
+          ctx.strokeStyle = "rgba(200, 150, 90, 0.35)";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(boardLeft - 12 + 1, funnelTop - 14 + 1, boardWidth + 24 - 2, height - funnelTop + 14 - 2);
+          ctx.restore();
+
+          // 2) 顶部漏斗：中央小孔（原文「从钉板上方中央的小孔处下落」）
+          //    粒子从漏斗底部小孔（第 0 行钉正上方）进入钉板
+          const funnelOpeningY = pegTopY - 8;
+          ctx.save();
+          const funnelW = horizontalSpacing * 5;
+          ctx.fillStyle = "#3a3a3e";
+          ctx.beginPath();
+          ctx.moveTo(centerX - funnelW / 2, funnelTop);
+          ctx.lineTo(centerX + funnelW / 2, funnelTop);
+          ctx.lineTo(centerX + funnelW / 6, funnelOpeningY);
+          ctx.lineTo(centerX - funnelW / 6, funnelOpeningY);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          // 漏斗底部小孔：中央黑色小圆
+          ctx.beginPath();
+          ctx.fillStyle = "rgba(10, 12, 16, 0.9)";
+          ctx.arc(centerX, funnelOpeningY, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+
+          // 3) 钉板：金属质感的铁钉（带高光点 + 内阴影）
           for (let row = 0; row < rows; row += 1) {
             for (let x = -row; x <= row; x += 2) {
+              const px = mapX(x);
+              const py = mapY(row) + row * verticalSpacing * 0.0;
+              ctx.save();
               ctx.beginPath();
-              ctx.arc(mapX(x), mapY(row), 2.2, 0, Math.PI * 2);
+              ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+              ctx.arc(px, py + 1.2, 4.6, 0, Math.PI * 2);
               ctx.fill();
-            }
-          }
-
-          if (data.finished) {
-            ctx.strokeStyle = "rgba(55, 148, 255, 0.22)";
-            ctx.lineWidth = 1;
-            for (const path of (data.paths || []).slice(0, 40)) {
+              const pegGrad = ctx.createRadialGradient(
+                px - 1.4, py - 1.6, 0.6, px, py, 4.2
+              );
+              pegGrad.addColorStop(0, "#e8ecf2");
+              pegGrad.addColorStop(0.5, "#9aa6b8");
+              pegGrad.addColorStop(1, "#5a6577");
               ctx.beginPath();
-              path.forEach((x, row) => {
-                const px = mapX(x);
-                const py = mapY(row);
-                if (row === 0) ctx.moveTo(px, py);
-                else ctx.lineTo(px, py);
-              });
+              ctx.fillStyle = pegGrad;
+              ctx.arc(px, py, 3.6, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.strokeStyle = "rgba(20, 25, 32, 0.6)";
+              ctx.lineWidth = 0.8;
               ctx.stroke();
+              ctx.restore();
             }
           }
 
-          ctx.fillStyle = COLORS.blue;
-          for (const point of data.particle_xy || []) {
-            const row = -point[1];
-            ctx.beginPath();
-            ctx.arc(mapX(point[0]), mapY(row), 3.5, 0, Math.PI * 2);
-            ctx.fill();
+          // 4) 狭槽：底部接收槽 + 垂直分隔板（粒子的落点容器）
+          ctx.save();
+          ctx.fillStyle = "rgba(12, 14, 18, 0.65)";
+          ctx.fillRect(boardLeft, pegBottomY + 14, boardWidth, slotH - 14);
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(boardLeft, pegBottomY + 14, boardWidth, slotH - 14);
+          // 分隔板
+          ctx.fillStyle = "rgba(170, 150, 110, 0.5)";
+          for (let k = 0; k <= rows; k += 1) {
+            const sx = boardLeft + (k / rows) * boardWidth;
+            ctx.fillRect(sx - 1.5, pegBottomY + 14, 3, slotH - 14);
           }
+          ctx.restore();
+
+          // 5) 已完成粒子的狭槽堆积（hexagonal 堆积，参考开源 bean machine）
+          if (data.finished && data.counts) {
+            const ballR = horizontalSpacing * 0.30;
+            const baseY = pegBottomY + 14 + slotH - 18;
+            const slotY = baseY;
+            data.counts.forEach((count, k) => {
+              const slotCX = boardLeft + ((k + 0.5) / rows) * boardWidth;
+              const perRow = 3;
+              let placed = 0;
+              let layer = 0;
+              while (placed < count) {
+                const rowCount = Math.min(perRow, count - placed);
+                const xOffset = (perRow - rowCount) / 2;
+                for (let j = 0; j < rowCount; j += 1) {
+                  const bx = slotCX + (j + xOffset - (perRow - 1) / 2) * ballR * 1.6;
+                  const by = slotY - layer * ballR * 1.6;
+                  drawMarble(ctx, bx, by, ballR, COLORS.blue);
+                }
+                placed += rowCount;
+                layer += 1;
+                if (layer > 30) break;
+              }
+            });
+          }
+
+          // 6) 下落中的粒子：从漏斗内部开始 → 逐钉弧线下落（带高光弹珠）
+          //    只在动画进行中绘制；完成后粒子已落入狭槽（第 5 节画堆积），
+          //    若继续画会在槽口上方来回振荡（原 bug）。
+          //    粒子一开始就显示在漏斗内部（虚拟起点在漏斗腔内，而非小孔下方），
+          //    从漏斗口随下落逐渐移到小孔，再落到第 0 行钉，不再跳过第一个钉。
+          if (!data.finished) {
+            const prefixes = data.path_prefixes || [];
+            const progress = 0.5 + 0.5 * Math.sin((performance.now() % 900) / 900 * Math.PI * 2);
+            for (let i = 0; i < prefixes.length; i += 1) {
+              const path = prefixes[i];
+              if (!path || path.length < 1) continue;
+              // 节点序列：漏斗腔内起点（第 -2 层）→ 漏斗小孔（第 -1 层）→ 各钉层
+              // 起点 x 加一点随机散布，让粒子看起来像从漏斗里的一堆里出来
+              const scatterX = ((i * 37) % 17 - 8) * horizontalSpacing * 0.05;
+              const nodes = [
+                { x: 0 + scatterX, y: funnelTop + 6 },
+                { x: 0, y: funnelOpeningY },
+                ...path.map((x, r) => ({ x, y: mapY(r) })),
+              ];
+              // 轨迹残影：旧段暗淡 → 新段鲜亮
+              for (let s = 0; s < nodes.length - 1; s += 1) {
+                const from = nodes[s];
+                const to = nodes[s + 1];
+                const fromX = mapX(from.x);
+                const fromY = from.y;
+                const toX = mapX(to.x);
+                const toY = to.y;
+                const midX = (fromX + toX) / 2;
+                const midY = Math.max(fromY, toY) + verticalSpacing * 0.5;
+                ctx.save();
+                ctx.strokeStyle = `rgba(85, 160, 255, ${(0.06 + 0.34 * (s / Math.max(nodes.length - 1, 1))).toFixed(3)})`;
+                ctx.lineWidth = 1.4;
+                ctx.beginPath();
+                ctx.moveTo(fromX, fromY);
+                ctx.quadraticCurveTo(midX, midY, toX, toY);
+                ctx.stroke();
+                ctx.restore();
+              }
+              // 当前弹珠：在最后两个节点之间做弧线下落
+              const last = nodes[nodes.length - 1];
+              const prev = nodes[nodes.length - 2] || last;
+              const px0 = mapX(prev.x);
+              const py0 = prev.y;
+              const px1 = mapX(last.x);
+              const py1 = last.y;
+              const t = progress;
+              const bx = px0 + (px1 - px0) * t;
+              const by = py0 + (py1 - py0) * t + Math.sin(Math.PI * t) * verticalSpacing * 0.22;
+              drawMarble(ctx, bx, by, horizontalSpacing * 0.26, COLORS.blue);
+            }
+          }
+
+          // 7) 图例：说明画面元素
+          const legendItems = [
+            { kind: "pin", color: "#9aa6b8", label: "钉（铁钉）" },
+            { kind: "ball", color: COLORS.blue, label: "粒子（弹珠）" },
+            { kind: "slot", color: "#aa966e", label: "狭槽" },
+          ];
+          const legendX = 12;
+          const legendY = 8;
+          const legendItemH = 16;
+          const legendPad = 8;
+          const legendW = 120;
+          const legendH = legendItems.length * legendItemH + legendPad * 1.6;
+          ctx.save();
+          ctx.fillStyle = "rgba(30, 30, 30, 0.8)";
+          ctx.strokeStyle = "rgba(62, 62, 66, 0.9)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(legendX, legendY, legendW, legendH, 6);
+          ctx.fill();
+          ctx.stroke();
+          ctx.font = "11px 'HeatLab CJK', 'Segoe UI', sans-serif";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = "#cccccc";
+          ctx.textAlign = "left";
+          legendItems.forEach((item, index) => {
+            const y = legendY + legendPad + index * legendItemH + legendItemH / 2;
+            const symbolX = legendX + 12;
+            if (item.kind === "pin") {
+              ctx.fillStyle = item.color;
+              ctx.beginPath();
+              ctx.arc(symbolX, y, 3.4, 0, Math.PI * 2);
+              ctx.fill();
+            } else if (item.kind === "ball") {
+              drawMarble(ctx, symbolX, y, 5, item.color);
+            } else {
+              ctx.fillStyle = "rgba(170, 150, 110, 0.7)";
+              ctx.fillRect(symbolX - 6, y - 6, 12, 12);
+            }
+            ctx.fillStyle = "#cccccc";
+            ctx.fillText(item.label, legendX + 26, y);
+          });
+          ctx.restore();
+        }
+
+        // 弹珠：径向渐变 + 高光 + 柔边（主流物理模拟的 marble 呈现）
+        function drawMarble(ctx, x, y, radius, baseColor) {
+          if (radius <= 0.5) return;
+          ctx.save();
+          const glow = ctx.createRadialGradient(x, y, radius * 0.1, x, y, radius * 1.6);
+          glow.addColorStop(0, "rgba(120, 190, 255, 0.18)");
+          glow.addColorStop(1, "rgba(120, 190, 255, 0)");
+          ctx.beginPath();
+          ctx.arc(x, y, radius * 1.6, 0, Math.PI * 2);
+          ctx.fillStyle = glow;
+          ctx.fill();
+          const grad = ctx.createRadialGradient(
+            x - radius * 0.35, y - radius * 0.35, radius * 0.1,
+            x, y, radius
+          );
+          const rgb = baseColor.replace("#", "");
+          const r = parseInt(rgb.slice(0, 2), 16);
+          const g = parseInt(rgb.slice(2, 4), 16);
+          const b = parseInt(rgb.slice(4, 6), 16);
+          grad.addColorStop(0, `rgb(${Math.min(255, r + 120)}, ${Math.min(255, g + 120)}, ${Math.min(255, b + 120)})`);
+          grad.addColorStop(0.45, `rgb(${r}, ${g}, ${b})`);
+          grad.addColorStop(1, `rgb(${Math.round(r * 0.55)}, ${Math.round(g * 0.55)}, ${Math.round(b * 0.55)})`);
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fillStyle = grad;
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+          ctx.arc(x - radius * 0.32, y - radius * 0.32, radius * 0.22, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
         }
 
         function renderScene() {
           if (topic.value === "ideal-gas" && ideal.data) {
-            drawParticles(ideal.data.positions, { boxWidth: ideal.data.box_width, boxHeight: 1 });
+            drawIdealGas3D(ideal.data);
           } else if (topic.value === "brownian" && brownian.data) {
-            drawPath(brownian.data.path);
+            drawBrownian(brownian.data);
           } else if (topic.value === "maxwell" && maxwell.data) {
             drawParticles(maxwell.data.positions, { boxWidth: 1, boxHeight: 1, color: COLORS.purple });
           } else if (topic.value === "galton" && galton.data) {
             drawGalton(galton.data);
+          }
+        }
+
+        function renderMaxwellCharts() {
+          // 速率分布 f(v) 主图
+          // 使用线性数值轴：x 按真实速率定位，温度升高 → 曲线右移、变宽、峰值变矮；
+          // y 轴固定上限（0 °C 峰值），避免坐标轴自动缩放造成“变形”观感。
+          const data = maxwell.data;
+          if (!data) return;
+          const theoryPoints = (data.pdf_v || []).map((v, i) => ({ x: v, y: data.pdf_f[i] }));
+          const histPoints = (data.hist_v || []).map((v, i) => ({ x: v, y: data.hist_f[i] }));
+          const yMax = data.y_max_fixed || 0.0025;
+          const xMax = (data.pdf_v || [])[0] || 0;
+          const histXMax = Math.max(0, ...(data.hist_v || []));
+          const xLimit = Math.max(xMax, histXMax) * 1.05;
+
+          if (!chart || chart._heatTopic !== "maxwell") {
+            ensureChart({
+              type: "line",
+              data: {
+                datasets: [
+                  {
+                    label: "样本直方图",
+                    data: histPoints,
+                    stepped: true,
+                    borderColor: "rgba(197, 134, 192, 0.85)",
+                    backgroundColor: "rgba(197, 134, 192, 0.18)",
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    fill: true,
+                  },
+                  {
+                    label: "理论 PDF",
+                    data: theoryPoints,
+                    borderColor: COLORS.yellow,
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0,
+                  },
+                ],
+              },
+              options: {
+                scales: {
+                  x: { ...axisScale("速率 v / (m·s⁻¹)"), type: "linear", min: 0, max: xLimit },
+                  y: { ...axisScale("f(v)"), min: 0, max: yMax },
+                },
+              },
+            }, "maxwell");
+          } else {
+            updateChart((c) => {
+              c.data.datasets[0].data = histPoints;
+              c.data.datasets[1].data = theoryPoints;
+              c.options.scales.x.max = xLimit;
+              c.options.scales.y.max = yMax;
+            });
+          }
+
+          // 水平速度分量 v_x 高斯分布图（文档要求的"几率~水平速度曲线"）
+          const compTheoryPoints = (data.component_pdf_v || []).map((v, i) => ({ x: v, y: data.component_pdf_f[i] }));
+          const compHistPoints = (data.component_hist_v || []).map((v, i) => ({ x: v, y: data.component_hist_f[i] }));
+          const compYMax = data.component_y_max_fixed || 0.0014;
+          const compXMax = Math.max(0, ...(data.component_hist_v || []), ...(data.component_pdf_v || [])) * 1.05;
+          if (!componentChart || componentChart._heatTopic !== "maxwell-component") {
+            ensureComponentChart({
+              type: "line",
+              data: {
+                datasets: [
+                  {
+                    label: "v_x 样本直方图",
+                    data: compHistPoints,
+                    stepped: true,
+                    borderColor: "rgba(55, 148, 255, 0.85)",
+                    backgroundColor: "rgba(55, 148, 255, 0.16)",
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    fill: true,
+                  },
+                  {
+                    label: "理论高斯",
+                    data: compTheoryPoints,
+                    borderColor: COLORS.green,
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0,
+                  },
+                ],
+              },
+              options: {
+                scales: {
+                  x: { ...axisScale("水平分量 v_x / (m·s⁻¹)"), type: "linear" },
+                  y: { ...axisScale("f(v_x)"), min: 0, max: compYMax },
+                },
+              },
+            }, "maxwell-component");
+          } else {
+            updateComponentChart((c) => {
+              c.data.datasets[0].data = compHistPoints;
+              c.data.datasets[1].data = compTheoryPoints;
+              c.options.scales.y.max = compYMax;
+            });
+          }
+        }
+
+        function renderBrownianSpeedChart() {
+          const data = brownian.data;
+          if (!data || !data.speed_hist_v) return;
+          const labels = data.speed_hist_v.map((value) => value.toFixed(2));
+          // 理论 2-D 麦克斯韦：f(v) = (v/σ²)·exp(-v²/2σ²)，σ 由液体温度决定
+          const sigma = data.liquid_sigma || 1;
+          const theory = labels.map((label) => {
+            const v = Number(label);
+            return (v / (sigma * sigma)) * Math.exp(-(v * v) / (2 * sigma * sigma));
+          });
+          if (!componentChart || componentChart._heatTopic !== "brownian-speed") {
+            ensureComponentChart({
+              data: {
+                labels,
+                datasets: [
+                  {
+                    type: "bar",
+                    label: "液体分子样本",
+                    data: data.speed_hist_f,
+                    backgroundColor: "rgba(96, 170, 255, 0.4)",
+                    borderWidth: 0,
+                  },
+                  {
+                    type: "line",
+                    label: "理论 f(v)（2-D 麦克斯韦）",
+                    data: theory,
+                    borderColor: COLORS.green,
+                    pointRadius: 0,
+                    tension: 0.2,
+                  },
+                ],
+              },
+              options: {
+                scales: {
+                  x: axisScale("速率 v（无量纲）"),
+                  y: axisScale("f(v)"),
+                },
+              },
+            }, "brownian-speed");
+          } else {
+            updateComponentChart((c) => {
+              c.data.labels = labels;
+              c.data.datasets[0].data = data.speed_hist_f;
+              c.data.datasets[1].data = theory;
+            });
           }
         }
 
@@ -653,82 +2296,48 @@
           chartDirty = false;
 
           if (topic.value === "ideal-gas" && ideal.data) {
-            const phase = (ideal.data.phase_history || []).map((point) => ({ x: point[0], y: point[1] }));
-            const kinetic = (ideal.data.kinetic_trail || []).map((point) => ({ x: point[0], y: point[1] }));
-            const live = ideal.data.live_point
-              ? [{ x: ideal.data.live_point[0], y: ideal.data.live_point[1] }]
-              : [];
-
-            if (!chart || chart._heatTopic !== "ideal-gas") {
-              ensureChart({
-                type: "scatter",
-                data: {
-                  datasets: [
-                    {
-                      label: "设定路径 (PV=nRT)",
-                      data: phase,
-                      showLine: true,
-                      borderColor: COLORS.yellow,
-                      backgroundColor: COLORS.yellow,
-                      pointRadius: 2.5,
-                      borderWidth: 1.5,
-                      tension: 0,
-                    },
-                    {
-                      label: "动能论轨迹",
-                      data: kinetic,
-                      showLine: true,
-                      borderColor: "rgba(55, 148, 255, 0.65)",
-                      backgroundColor: "rgba(55, 148, 255, 0.15)",
-                      pointRadius: 0,
-                      borderWidth: 1.25,
-                      tension: 0.15,
-                    },
-                    {
-                      label: "当前动能论点",
-                      data: live,
-                      showLine: false,
-                      backgroundColor: COLORS.blue,
-                      borderColor: COLORS.strong,
-                      pointRadius: 5,
-                      pointHoverRadius: 6,
-                    },
-                  ],
-                },
-                options: {
-                  scales: {
-                    x: axisScale("P / atm"),
-                    y: axisScale("V / L"),
-                  },
-                },
-              }, "ideal-gas");
-            } else {
-              updateChart((c) => {
-                c.data.datasets[0].data = phase;
-                c.data.datasets[1].data = kinetic;
-                c.data.datasets[2].data = live;
-              });
+            // P-V-T 相图（Plotly 3D + 平面图）重绘代价高：
+            // 粒子场景每帧更新，相图每 4 帧真正重建一次（约 130ms 一刷，视觉足够平滑）。
+            phaseChartThrottle += 1;
+            if (!force && phaseChartThrottle % 4 !== 0) return;
+            if (chart) {
+              chart.destroy();
+              chart = null;
             }
+            renderPhasePlotly(ideal.data);
+            renderPlanarCharts(ideal.data);
           } else if (topic.value === "brownian" && brownian.data) {
-            const labels = (brownian.data.msd_lag || []).map((value) => value.toFixed(2));
+            const data = brownian.data;
+            const labels = (data.msd_lag || []).map((value) => value.toFixed(3));
+            const theoryMsd = (data.msd_lag || []).map((value) => 4 * (data.theoretical_D || 0) * value);
             if (!chart || chart._heatTopic !== "brownian") {
               ensureChart({
                 type: "line",
                 data: {
                   labels,
-                  datasets: [{
-                    label: "MSD",
-                    data: brownian.data.msd || [],
-                    borderColor: COLORS.blue,
-                    backgroundColor: "rgba(55, 148, 255, 0.10)",
-                    tension: 0.25,
-                    pointRadius: 0,
-                    fill: true,
-                  }],
+                  datasets: [
+                    {
+                      label: "MSD",
+                      data: data.msd || [],
+                      borderColor: COLORS.blue,
+                      backgroundColor: "rgba(55, 148, 255, 0.10)",
+                      tension: 0.25,
+                      pointRadius: 0,
+                      fill: true,
+                    },
+                    {
+                      label: "4Dt（理论）",
+                      data: theoryMsd,
+                      borderColor: COLORS.green,
+                      borderDash: [5, 4],
+                      pointRadius: 0,
+                      tension: 0,
+                    },
+                  ],
                 },
                 options: {
                   scales: {
-                    x: axisScale("滞后时间"),
+                    x: axisScale("滞后时间 t"),
                     y: axisScale("MSD"),
                   },
                 },
@@ -736,62 +2345,13 @@
             } else {
               updateChart((c) => {
                 c.data.labels = labels;
-                c.data.datasets[0].data = brownian.data.msd || [];
+                c.data.datasets[0].data = data.msd || [];
+                c.data.datasets[1].data = theoryMsd;
               });
             }
+            renderBrownianSpeedChart();
           } else if (topic.value === "maxwell" && maxwell.data && maxwell.data.hist_v) {
-            const pdfLookup = (target) => {
-              const xs = maxwell.data.pdf_v || [];
-              const ys = maxwell.data.pdf_f || [];
-              let best = 0;
-              let bestDist = Infinity;
-              for (let i = 0; i < xs.length; i += 1) {
-                const dist = Math.abs(xs[i] - target);
-                if (dist < bestDist) {
-                  bestDist = dist;
-                  best = ys[i];
-                }
-              }
-              return best;
-            };
-            const labels = maxwell.data.hist_v.map((value) => value.toFixed(0));
-            const theory = maxwell.data.hist_v.map((value) => pdfLookup(value));
-            if (!chart || chart._heatTopic !== "maxwell") {
-              ensureChart({
-                data: {
-                  labels,
-                  datasets: [
-                    {
-                      type: "bar",
-                      label: "样本",
-                      data: maxwell.data.hist_f,
-                      backgroundColor: "rgba(197, 134, 192, 0.45)",
-                      borderWidth: 0,
-                    },
-                    {
-                      type: "line",
-                      label: "理论 PDF",
-                      data: theory,
-                      borderColor: COLORS.yellow,
-                      pointRadius: 0,
-                      tension: 0.25,
-                    },
-                  ],
-                },
-                options: {
-                  scales: {
-                    x: axisScale("速率 v"),
-                    y: axisScale("f(v)"),
-                  },
-                },
-              }, "maxwell");
-            } else {
-              updateChart((c) => {
-                c.data.labels = labels;
-                c.data.datasets[0].data = maxwell.data.hist_f;
-                c.data.datasets[1].data = theory;
-              });
-            }
+            renderMaxwellCharts();
           } else if (topic.value === "galton" && galton.data) {
             const labels = (galton.data.bins || []).map(String);
             if (!chart || chart._heatTopic !== "galton") {
@@ -866,15 +2426,130 @@
             const payload = await postJson("/api/live/ideal-gas/set", {
               temperature_c: ideal.temperature_c,
               pressure_atm: ideal.pressure_atm,
+              process_mode: ideal.process_mode,
             });
             ideal.data = payload.data;
+            if (ideal.process_mode === "isochoric") {
+              ideal.pressure_atm = payload.data.pressure_atm;
+            }
+            chartDirty = true;
+            renderScene();
+            renderChartIfNeeded(true);
+            if (modalOpen.value) renderModal();
+          } catch (err) {
+            error.value = err.message || String(err);
+          }
+        });
+
+        async function applyIdealNow() {
+          // 立即应用当前 T/P（无防抖），供自动步进使用。
+          // 相图渲染走 renderChartIfNeeded 的节流（每 4 帧刷新），避免每帧重建 3D 场景。
+          await ensureSession();
+          const payload = await postJson("/api/live/ideal-gas/set", {
+            temperature_c: ideal.temperature_c,
+            pressure_atm: ideal.pressure_atm,
+            process_mode: ideal.process_mode,
+          });
+          ideal.data = payload.data;
+          if (ideal.process_mode === "isochoric") {
+            ideal.pressure_atm = payload.data.pressure_atm;
+          }
+          chartDirty = true;
+          renderScene();
+          renderChartIfNeeded();
+          if (modalOpen.value) renderModal();
+        }
+
+        function setSweepTarget(target) {
+          sweep.target = target;
+        }
+
+        function setSweepDirection(direction) {
+          sweep.direction = direction;
+        }
+
+        function toggleSweep() {
+          if (sweep.enabled) {
+            sweep.enabled = false;
+            return;
+          }
+          if (sweep.target === "pressure_atm" && ideal.process_mode === "isochoric") {
+            sweep.target = "temperature_c";
+          }
+          sweep.enabled = true;
+        }
+
+        async function sweepStep(deltaMs) {
+          if (!sweep.enabled || topic.value !== "ideal-gas") return;
+          const deltaSec = Math.min((deltaMs || 33) / 1000, 0.25);
+          if (sweep.target === "temperature_c") {
+            const step = sweep.rate * 0.1 * sweep.direction * deltaSec;
+            const next = Math.min(100, Math.max(0, ideal.temperature_c + step));
+            ideal.temperature_c = next;
+            if (next <= 0 || next >= 100) sweep.enabled = false;
+          } else {
+            const step = sweep.rate * 0.001 * sweep.direction * deltaSec;
+            const next = Math.min(2, Math.max(1, ideal.pressure_atm + step));
+            ideal.pressure_atm = next;
+            if (next <= 1 || next >= 2) sweep.enabled = false;
+          }
+          await applyIdealNow();
+        }
+
+        // ---- 麦克斯韦温度自动步进 ----
+        async function applyMaxwellNow() {
+          await ensureSession();
+          const payload = await postJson("/api/live/maxwell/set", {
+            temperature_c: maxwell.temperature_c,
+          });
+          maxwell.data = payload.data;
+          chartDirty = true;
+          renderScene();
+          renderChartIfNeeded(true);
+        }
+
+        function setMaxwellSweepDirection(direction) {
+          maxwellSweep.direction = direction;
+        }
+
+        function toggleMaxwellSweep() {
+          maxwellSweep.enabled = !maxwellSweep.enabled;
+        }
+
+        async function maxwellSweepStep(deltaMs) {
+          if (!maxwellSweep.enabled || topic.value !== "maxwell") return;
+          // 温度每 3 帧才真正 set 一次（重新采样直方图很重）：
+          // 中间帧粒子继续 step，温度曲线每 ~100ms 刷新一次，视觉足够平滑。
+          maxwellSweepFrame += 1;
+          if (maxwellSweepFrame % 3 !== 0) return;
+          const deltaSec = Math.min((deltaMs || 33) / 1000, 0.25);
+          const step = maxwellSweep.rate * 0.3 * maxwellSweep.direction * deltaSec;
+          const next = Math.min(100, Math.max(0, maxwell.temperature_c + step));
+          maxwell.temperature_c = next;
+          if (next <= 0 || next >= 100) maxwellSweep.enabled = false;
+          await applyMaxwellNow();
+        }
+
+        async function setIdealProcessMode(mode) {
+          try {
+            await ensureSession();
+            const payload = await postJson("/api/live/ideal-gas/set", {
+              temperature_c: ideal.temperature_c,
+              pressure_atm: ideal.pressure_atm,
+              process_mode: mode,
+            });
+            ideal.process_mode = mode;
+            ideal.data = payload.data;
+            if (mode === "isochoric") {
+              ideal.pressure_atm = payload.data.pressure_atm;
+            }
             chartDirty = true;
             renderScene();
             renderChartIfNeeded(true);
           } catch (err) {
             error.value = err.message || String(err);
           }
-        });
+        }
 
         const onBrownianChange = debounceParams(async () => {
           try {
@@ -955,8 +2630,12 @@
             const payload = await postJson("/api/live/ideal-gas/set", {
               temperature_c: ideal.temperature_c,
               pressure_atm: ideal.pressure_atm,
+              process_mode: ideal.process_mode,
             });
             ideal.data = payload.data;
+            if (ideal.process_mode === "isochoric") {
+              ideal.pressure_atm = payload.data.pressure_atm;
+            }
           } else if (topic.value === "brownian") {
             const payload = await postJson("/api/live/brownian/set", {
               mass_ratio: brownian.mass_ratio,
@@ -977,21 +2656,51 @@
           renderChartIfNeeded(forceChart || true);
         }
 
-        async function stepOnce() {
+        // 首次进入某专题时展示信息弹窗（实验说明 + 使用教程，公式 katex 渲染）
+        function showTopicInfo(id) {
+          if (visitedTopics.has(id)) return;
+          visitedTopics.add(id);
+          const info = TOPIC_INFO[id];
+          if (!info) return;
+          infoTitle.value = info.title;
+          infoFormulas.value = info.formulas.map((f) => ({
+            tag: f.tag,
+            katex: typeof katex !== "undefined"
+              ? katex.renderToString(f.katex, { throwOnError: false })
+              : f.katex,
+          }));
+          infoDescription.value = info.description;
+          infoUsage.value = info.usage;
+          infoOpen.value = true;
+        }
+
+        function closeInfo() {
+          infoOpen.value = false;
+        }
+
+        async function stepOnce(deltaMs = 33) {
           if (busy.value || paused.value) return;
           busy.value = true;
           try {
             if (topic.value === "ideal-gas") {
+              if (sweep.enabled) {
+                await sweepStep(deltaMs);
+              }
               const payload = await postJson("/api/live/ideal-gas/step", { steps: 1 });
               ideal.data = payload.data;
               idealFrame += 1;
-              // Kinetic trail changes every frame — keep the P-V chart alive.
-              chartDirty = true;
+              // 粒子场景每帧重绘；相图（3D/平面）每 4 帧刷新即可
+              if (idealFrame % 4 === 0) chartDirty = true;
             } else if (topic.value === "brownian") {
               const payload = await postJson("/api/live/brownian/step", { steps: 2 });
               brownian.data = payload.data;
-              chartDirty = true;
+              // 场景每帧渲染，图表（MSD/速度分布）每 6 帧刷新一次即可
+              brownianFrame += 1;
+              if (brownianFrame % 6 === 0) chartDirty = true;
             } else if (topic.value === "maxwell") {
+              if (maxwellSweep.enabled) {
+                await maxwellSweepStep(deltaMs);
+              }
               const payload = await postJson("/api/live/maxwell/step", { steps: 1 });
               const histV = maxwell.data?.hist_v;
               const histF = maxwell.data?.hist_f;
@@ -1009,6 +2718,7 @@
             }
             renderScene();
             renderChartIfNeeded();
+            if (modalOpen.value && topic.value === "ideal-gas") renderModal();
             error.value = "";
           } catch (err) {
             error.value = err.message || String(err);
@@ -1023,8 +2733,9 @@
           const baseInterval = topic.value === "galton" ? 90 : 33;
           const interval = prefersReducedMotion.value ? Math.max(baseInterval * 3, 120) : baseInterval;
           if (timestamp - lastStepAt >= interval) {
+            const deltaMs = timestamp - lastStepAt;
             lastStepAt = timestamp;
-            stepOnce();
+            stepOnce(deltaMs);
           }
         }
 
@@ -1059,12 +2770,25 @@
           if (topic.value === id) return;
           topic.value = id;
           chartDirty = true;
+          if (modalOpen.value) closeModal();
+          if (infoOpen.value) closeInfo();
           if (chart) {
             chart.destroy();
             chart = null;
           }
+          if (componentChart) {
+            componentChart.destroy();
+            componentChart = null;
+          }
+          if (id !== "ideal-gas") {
+            destroyPlanarCharts();
+          }
+          // 切换到新专题时不自动播放该页动画（保持静态初始画面，手动触发）
+          paused.value = true;
           try {
             await bootstrapTopic(true);
+            // 首次进入该专题：展示实验说明/使用教程弹窗
+            showTopicInfo(id);
           } catch (err) {
             error.value = err.message || String(err);
           }
@@ -1074,9 +2798,26 @@
           if (resizeTimer) clearTimeout(resizeTimer);
           resizeTimer = setTimeout(() => {
             renderScene();
+            if (topic.value === "ideal-gas" && ideal.data) {
+              if (phaseHost.value) Plotly.Plots.resize(phaseHost.value);
+              for (const instance of [planarPvChart, planarPtChart, planarVtChart]) {
+                if (instance) instance.resize();
+              }
+            }
             if (chart) {
               chart.resize();
               chart.update("none");
+            }
+            if (componentChart) {
+              componentChart.resize();
+              componentChart.update("none");
+            }
+            if (modalOpen.value) {
+              if (modalKind.value === "phase" && modalPhaseHost.value) {
+                Plotly.Plots.resize(modalPhaseHost.value);
+              } else if (modalChart) {
+                modalChart.resize();
+              }
             }
           }, 50);
         }
@@ -1095,6 +2836,8 @@
             }
             await ensureSession();
             await bootstrapTopic(true);
+            // 首页（热力学）首次进入同样展示信息弹窗
+            showTopicInfo(topic.value);
             window.addEventListener("resize", onResize);
             if (typeof ResizeObserver !== "undefined") {
               resizeObserver = new ResizeObserver(() => onResize());
@@ -1114,25 +2857,56 @@
           if (rafId) cancelAnimationFrame(rafId);
           if (pendingParam) clearTimeout(pendingParam);
           if (chart) chart.destroy();
+          if (componentChart) componentChart.destroy();
+          destroyPlanarCharts();
         });
 
         return {
           topics,
+          processModes,
           topic,
           seed,
           paused,
           error,
           sceneCanvas,
           chartCanvas,
+          componentChartCanvas,
+          planarPvCanvas,
+          planarPtCanvas,
+          planarVtCanvas,
+          modalPhaseHost,
+          modalPvCanvas,
+          modalPtCanvas,
+          modalVtCanvas,
+          modalOpen,
+          modalKind,
+          modalTitle,
+          openModal,
+          closeModal,
+          infoOpen,
+          infoTitle,
+          infoFormulas,
+          infoDescription,
+          infoUsage,
+          closeInfo,
+          phaseHost,
           sceneHost,
           chartHost,
+          componentChartHost,
           ideal,
           brownian,
           maxwell,
           galton,
+          sweep,
+          maxwellSweep,
           currentMeta,
+          processLabel,
+          sweepTargetLabel,
+          sweepRateLabel,
+          maxwellSweepRateLabel,
           sceneTitle,
           chartTitle,
+          componentChartTitle,
           statusClass,
           statusText,
           formatOptional,
@@ -1140,6 +2914,12 @@
           togglePause,
           switchTopic,
           onTopicKeydown,
+          setIdealProcessMode,
+          setSweepTarget,
+          setSweepDirection,
+          toggleSweep,
+          setMaxwellSweepDirection,
+          toggleMaxwellSweep,
           onIdealChange,
           onBrownianChange,
           onMaxwellChange,
