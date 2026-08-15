@@ -32,10 +32,10 @@
 
 | 专题 | 内容 |
 |---|---|
-| **热力学 / 理想气体** | `PV=nRT`、分子热运动动画、P-V-T / 动能论轨迹 |
-| **布朗运动** | 有惯性 Langevin、轨迹与 MSD / 扩散常数 |
-| **麦克斯韦速率分布** | 理论 PDF + 蒙特卡洛直方图 + 粒子动画 |
-| **伽尔顿板** | 蒙特卡洛下落路径与二项分布对照 |
+| **热力学 / 理想气体** | `PV=nRT`、**3D 分子热运动动画**（体积随 T/P 缩放、粒子按速率着色）、**3D P-V-T 相图**（给出 `(P,V,T)` 坐标值）+ **P-V / P-T / V-T 平面图**、等温/等压/等容准静态过程模式与理论过程线 |
+| **布朗运动** | 有惯性 Langevin、液体分子间硬球弹性碰撞、轨迹与 MSD / 扩散常数；花粉碰撞点高亮、方向箭头/速度矢量/轨迹渐隐开关 |
+| **麦克斯韦速率分布** | 理论 PDF + 蒙特卡洛直方图 + 粒子动画；**速率 f(v) 与水平速度分量 v_x 高斯分布双图对照**（线性轴、y 上限固定） |
+| **伽尔顿板** | 蒙特卡洛下落路径（漏斗 → 钉板 → 狭槽 hexagonal 堆积）与二项分布对照 |
 
 三种使用方式：
 
@@ -43,7 +43,13 @@
 2. **单专题桌面版** — `heatlab-ideal-gas` 等独立窗口
 3. **浏览器实时版** — `heatlab-web` → <http://127.0.0.1:8765>
 
-桌面 Matplotlib 图例/图注在深色主题下强制浅色文字并优先常规字重中文字体，避免黑字或细体字不可读。
+桌面版与 Web 版共享同一套模型层与 VS Code Dark+ 工作台视觉：顶栏（品牌 + 种子命令托盘 + 运行簇）、专题 Tab、三栏「参数 | 场景 | 图表」、底部状态栏。桌面 Matplotlib 图例/图注在深色主题下强制浅色文字并优先常规字重中文字体，避免黑字或细体字不可读。
+
+Web 端新增交互特性：
+
+- **默认不自动播放**：进入任一专题都保持静态初始画面，点「继续」或「投放粒子」等按钮手动触发动画
+- **专题信息弹窗**：首次进入每个专题时弹出说明面板，包含按任务文档编写的**实验说明 + 使用教程**，公式用 **KaTeX** 渲染
+- **全屏查看**：3D 相图与每个平面图右上角有放大按钮，弹窗内保留图注、坐标轴与 Plotly 工具栏
 
 ### Windows 预览客户端
 
@@ -119,7 +125,7 @@ pip install -e .
 ```bash
 ./.venv/bin/heatlab                  # 四专题合并窗口
 ./.venv/bin/heatlab --topic ideal-gas
-./.venv/bin/heatlab-brownian --seed 20260807
+./.venv/bin/heatlab-brownian --seed 42
 ```
 
 | 命令 | 说明 |
@@ -155,10 +161,13 @@ pip install -e .
 4. Canvas 重绘场景；Chart.js 刷新曲线/直方图
 5. 暂停停止步进；重置按新种子重建会话
 
-热力学 P-V 图同时含：
+热力学相图为 **P-V-T 相图**（对齐任务文档「PV-T 相图：给出 (P,V,T) 坐标值」）：
 
-- **设定路径 (PV=nRT)**：宏观状态点轨迹  
-- **动能论实时轨迹**：由 `N·m·⟨vₓ²⟩/V` 估计压强，帧间抖动
+- **设定路径 (PV=nRT)**：宏观状态点的 3D 轨迹  
+- **当前状态**：当前 (P, V, T) 状态点，图上与参数区均标注三元组坐标值  
+- **理论过程线**：等温/等压/等容模式下叠加对应 3D 理论线（虚线）
+
+麦克斯韦图表区为双图：**速率分布 f(v)** 与 **水平速度分量 v_x 高斯分布**，均含理论曲线与蒙特卡洛样本直方图。
 
 界面为 VS Code 风格工业扁平工作台 + lab-console 顶栏（brand plate、命令托盘、运行簇）。可用性：键盘 Tab、label、`aria-live` 状态栏、跳过链接、`prefers-reduced-motion`、内置 `HeatLab CJK` 字体。
 
@@ -169,9 +178,9 @@ pip install -e .
 | `GET /api/health` | 健康检查（`mode=live`） |
 | `POST /api/session` | 创建实时会话 |
 | `POST /api/session/reset` | 按种子重置 |
-| `POST /api/live/ideal-gas/set` · `/step` | 理想气体 |
+| `POST /api/live/ideal-gas/set` · `/step` | 理想气体；`set` 支持 `process_mode`（`free`/`isothermal`/`isobaric`/`isochoric`） |
 | `POST /api/live/brownian/set` · `/step` · `/reset` | 布朗运动 |
-| `POST /api/live/maxwell/set` · `/step` · `/reset` | 麦克斯韦 |
+| `POST /api/live/maxwell/set` · `/step` · `/reset` | 麦克斯韦（载荷含 `component_*` 分量分布） |
 | `POST /api/live/galton/start` · `/step` | 伽尔顿板 |
 | `GET /api/ideal-gas` 等 | 一次性快照（兼容） |
 
@@ -188,13 +197,13 @@ pip install -e .
 
 入库样例见 [examples/validation/](examples/validation/)。
 
-**随机复现**：`numpy.random.Generator`，由全局种子派生四个命名流。默认种子 `20260807`。相同版本 + 种子 + 参数 → 可复现。
+**随机复现**：`numpy.random.Generator`，由全局种子派生四个命名流。默认种子 `42`。相同版本 + 种子 + 参数 → 可复现。
 
 ## 物理建模边界
 
-- **理想气体**：视觉粒子忽略相互作用；T 控速度尺度，P/T 经状态方程决定 V  
-- **布朗运动**：原文缺黏度等 SI 参数 → 无量纲 Langevin；质量滑条下限 `0.05 m₀`  
-- **麦克斯韦**：默认氮气分子质量，温度 0–100 °C  
+- **理想气体**：视觉粒子忽略相互作用；T 控速度尺度，P/T 经状态方程决定 V；显示速度系数 1.5（仅影响观感，不改变物理状态）  
+- **布朗运动**：原文缺黏度等 SI 参数 → 无量纲 Langevin；质量滑条下限 `0.05 m₀`。液体分子层采用 **Ornstein-Uhlenbeck 热运动 + 硬球弹性碰撞**（借鉴开源硬球模型，如 `Yangliu20/physics-simulation` 的粒子弹性碰撞与轨迹/碰撞点可视化思路）  
+- **麦克斯韦**：默认氮气分子质量，温度 0–100 °C；显示速度系数 1.5，粒子活跃运动  
 - **伽尔顿板**：固定 12 层、`p=0.5`；UI 粒子数 1–100  
 
 ## 文档

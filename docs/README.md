@@ -9,3 +9,7 @@
 | [../examples/validation/](../examples/validation/) | 数值验证示例图与结果 JSON |
 
 根目录 [README.md](../README.md) 提供安装与快速开始。
+
+## 版本演进速览
+
+- **Unreleased（当前开发主线）**：四专题全部按任务文档对齐——理想气体 3D P-V-T 相图 + 平面图 + 过程模式；布朗运动液体分子硬球碰撞与轨迹开关；麦克斯韦 f(v) / v_x 双图（线性轴）；伽尔顿板漏斗-钉板-狭槽蒙特卡洛。Web 端默认不自动播放、首次进入专题弹出 KaTeX 实验说明弹窗、图表全屏放大。详见根目录 [CHANGELOG.md](../CHANGELOG.md)。

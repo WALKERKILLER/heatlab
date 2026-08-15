@@ -20,10 +20,20 @@ shipped by each dependency.
 | Asset | Role | Notes |
 |---|---|---|
 | Vue 3 | reactive UI shell | loaded from CDN in `templates/index.html` |
-| Chart.js | charts | loaded from CDN |
+| Chart.js | charts (linear-axis PDF, planar families, MSD…) | loaded from CDN |
+| Plotly.js (`plotly.js-dist-min@2.35.2`) | 3D P-V-T 相图（旋转/缩放/悬停） | loaded from CDN |
+| KaTeX (`katex@0.16.11`) | 专题信息弹窗公式渲染 | script + CSS from CDN |
 
 Binary redistributors should collect license/notice files from the resolved
 dependency versions and review Qt licensing for their distribution method.
+
+## 算法/视觉参考（开源项目，仅借鉴思路，不复制源码）
+
+| 项目 | 借鉴点 |
+|---|---|
+| `Yangliu20/physics-simulation` | 液体分子硬球弹性碰撞、轨迹/碰撞点可视化思路 |
+| `ricbencar/galton-board-statistics` | 伽尔顿板「精确 Bernoulli 路径 + 平滑轨迹插值 + 落槽堆积」的呈现思路 |
+| `clrsims/2d-brownian-motion` | 轨迹渐隐残影等视觉呈现思路 |
 
 ## Bundled font
 
