@@ -26,8 +26,9 @@ from heatlab.ui.common import (
 # 花粉粒子的金黄色调（对齐 Web 端的主流物理视觉）
 _POLLEN_FACE = "#f5c56b"
 _POLLEN_EDGE = "#c8873a"
-# 花粉轨迹的基础色（蓝），逐段 alpha 控制渐隐
-_PATH_RGB = (94, 186, 255)
+# 花粉轨迹的基础色（蓝），逐段 alpha 控制渐隐。
+# 用 0-1 浮点 RGB（matplotlib 图例 Line2D 不接受 0-255 整数元组）
+_PATH_RGB = (94 / 255, 186 / 255, 1.0)
 
 
 class BrownianTab(QWidget):
