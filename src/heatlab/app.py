@@ -63,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
 
         window = MainWindow()
         if args.seed != DEFAULT_SEED:
-            window.seed_spin.setValue(args.seed)
+            window.top_bar.seed_spin.setValue(args.seed)
             window.rebuild_tabs(args.seed)
     else:
         from heatlab.ui.topic_window import TopicWindow

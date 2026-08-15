@@ -1,24 +1,24 @@
-"""Single-topic desktop windows (no multi-tab chrome)."""
+"""Single-topic desktop windows (top bar + three-column workbench + status bar)."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QMainWindow, QPushButton, QSpinBox, QToolBar, QWidget
+from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
 
 from heatlab.constants import DEFAULT_SEED
 from heatlab.models import BrownianModel, GaltonModel, IdealGasModel, MaxwellModel
 from heatlab.randomness import RandomManager
 from heatlab.ui.brownian_tab import BrownianTab
+from heatlab.ui.common import StatusBar, TopBar
 from heatlab.ui.galton_tab import GaltonTab
 from heatlab.ui.ideal_gas_tab import IdealGasTab
 from heatlab.ui.maxwell_tab import MaxwellTab
-from heatlab.ui.style import APP_STYLE
+from heatlab.ui.style import APP_STYLE, STATUS_LIVE, STATUS_PAUSED
 
 TOPIC_SPECS: dict[str, dict[str, str]] = {
     "ideal-gas": {
-        "title": "HeatLab · 理想气体",
+        "title": "HeatLab · 热力学",
         "stream": "ideal-gas",
-        "label": "理想气体",
+        "label": "热力学",
     },
     "brownian": {
         "title": "HeatLab · 布朗运动",
@@ -62,28 +62,53 @@ class TopicWindow(QMainWindow):
             raise ValueError(f"unknown topic: {topic}")
         self.topic = topic
         self.setWindowTitle(TOPIC_SPECS[topic]["title"])
-        self.resize(1280, 780)
+        self.resize(1400, 860)
         self.setStyleSheet(APP_STYLE)
-        self._create_toolbar()
+
+        central = QWidget()
+        self.setCentralWidget(central)
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self.top_bar = TopBar(seed)
+        self.top_bar.seedApplied.connect(self.rebuild)
+        self.top_bar.pauseToggled.connect(self._set_global_pause)
+        outer.addWidget(self.top_bar)
+
+        self.body = QWidget()
+        outer.addWidget(self.body, 1)
+
+        self.status_bar = StatusBar()
+        outer.addWidget(self.status_bar)
+
         self.rebuild(seed)
 
-    def _create_toolbar(self) -> None:
-        toolbar = QToolBar("设置", self)
-        toolbar.setMovable(False)
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
-        toolbar.addWidget(QLabel("随机种子"))
-        self.seed_spin = QSpinBox()
-        self.seed_spin.setRange(0, 2_147_483_647)
-        self.seed_spin.setValue(DEFAULT_SEED)
-        self.seed_spin.setMinimumWidth(130)
-        toolbar.addWidget(self.seed_spin)
-        apply_button = QPushButton("应用并重置")
-        apply_button.clicked.connect(lambda: self.rebuild(self.seed_spin.value()))
-        toolbar.addWidget(apply_button)
-
     def rebuild(self, seed: int) -> None:
-        self.seed_spin.setValue(seed)
-        old = self.centralWidget()
-        if old is not None:
-            old.deleteLater()
-        self.setCentralWidget(build_topic_widget(self.topic, seed))
+        self.top_bar.seed_spin.setValue(seed)
+        self._current_tab = build_topic_widget(self.topic, seed)
+
+        while self.body.layout() is not None:
+            old_layout = self.body.layout()
+            while old_layout.count():
+                item = old_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
+        body_layout = QVBoxLayout(self.body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(0)
+        body_layout.addWidget(self._current_tab)
+
+        self.status_bar.set_seed(seed)
+        self.status_bar.set_topic(TOPIC_SPECS[self.topic]["label"])
+
+    def _set_global_pause(self, paused: bool) -> None:
+        set_paused = getattr(self._current_tab, "set_animation_paused", None)
+        if callable(set_paused):
+            set_paused(paused)
+        state = STATUS_PAUSED if paused else STATUS_LIVE
+        text = "动画已暂停" if paused else "动画实时运行中"
+        self.status_bar.set_state(state, text)
+        self.status_bar.set_running(paused)
+        self.top_bar.set_state(state)
