@@ -7,7 +7,7 @@ repo1/                         # GitHub 仓库根（本目录）
 ├── src/heatlab/               # 可安装 Python 包
 │   ├── models/                # 纯数值模型（ideal_gas / brownian / maxwell / galton）
 │   ├── ui/                    # PySide6 桌面界面
-│   ├── web/                   # Flask API + templates + static
+│   ├── web/                   # Flask API + templates + static + 一键启动器
 │   ├── randomness.py          # 全局种子 → 命名随机流
 │   ├── constants.py           # 默认种子等常量
 │   ├── validation.py          # 离线数值验证与出图
@@ -44,6 +44,19 @@ repo1/                         # GitHub 仓库根（本目录）
 └─────────────────────────────────────────────┘
 ```
 
+## Windows Web 一键演示版
+
+发布工作流不再打包旧版 PySide6 窗口，而是以 `src/heatlab/web/launcher.py` 为
+PyInstaller 入口：
+
+1. 启动器创建与开发版相同的 Flask `create_app()`；
+2. 使用 Werkzeug `make_server` 绑定 `127.0.0.1`，默认端口为 `8765`，被占用时自动向后寻找空闲端口；
+3. 服务绑定成功后调用系统默认浏览器打开本地地址；
+4. GitHub Actions 以 `--onefile --windowed` 构建 `HeatLab-Web.exe`，并显式收集 `web/templates` 与 `web/static`；
+5. 构建任务通过 `/api/health`、首页和 `/static/app.css` 冒烟检查后，产出 `HeatLab-Web-win64.zip`。
+
+该 exe 是“浏览器界面 + 本地 Python 后端”的封装，不是第二套 UI。浏览器端的 Vue、Chart.js、Plotly 与 KaTeX 仍从 CDN 加载，离线发布若有需求应另行本地化这些静态依赖。
+
 ## Web 实时回路
 
 1. `POST /api/session` 创建内存会话  
@@ -72,5 +85,7 @@ repo1/                         # GitHub 仓库根（本目录）
 - **可复现**：同一版本 + 同一种子 + 同一参数 → 同一随机结果  
 - **模型与界面分离**：改 UI 不应改写物理公式  
 - **本地优先**：默认 `127.0.0.1`；开发服务器不适合裸奔公网  
+- **显示与物理分离**：理想气体粒子箱是按 `T/P` 缩放并限幅的相对显示体积；物理体积仍由 `PV=nRT` 计算，不能从画面边长反推真实三维尺寸
+- **Web 优先演示**：Windows 发布产物优先提供 Web + 后端 exe，PySide6 入口保留为旧源码对照
 
 详见工作文档 `HeatLab_代码工作文档.md`。

@@ -37,6 +37,9 @@ uv pip install -e ".[dev]"
 # Web 实时版
 ./.venv/bin/heatlab-web --host 127.0.0.1 --port 8765
 
+# Web + 后端一键启动器（本地预览，会打开默认浏览器）
+./.venv/bin/heatlab-web-desktop
+
 # 数值验证图（写入本地 validation_output/，该目录不入库）
 ./.venv/bin/python -m heatlab.validation --output-dir validation_output
 ```
@@ -55,6 +58,7 @@ uv pip install -e ".[dev]"
 - [ ] UI 文案为简体中文（与现有界面一致）
 - [ ] 未提交 `.venv/`、密钥、本机绝对路径或 `validation_output/` 运行产物
 - [ ] 大二进制文件有必要说明（字体 / 示意图除外）
+- [ ] Windows Web 打包需通过 `.github/workflows/build-windows.yml` 的 `/api/health`、首页和静态资源冒烟检查
 
 ## 代码结构提示
 
@@ -62,7 +66,7 @@ uv pip install -e ".[dev]"
 |---|---|
 | `src/heatlab/models/` | 纯数值模型（尽量无 GUI 依赖） |
 | `src/heatlab/ui/` | PySide6 桌面界面 |
-| `src/heatlab/web/` | Flask API + 模板与静态资源 |
+| `src/heatlab/web/` | Flask API + 模板、静态资源与 Windows 一键启动器 |
 | `tests/` | pytest 用例 |
 | `docs/` | 架构、工作文档、任务原文 |
 

@@ -1,4 +1,4 @@
-name: build-windows
+name: build-windows-web
 
 on:
   workflow_dispatch:
@@ -21,77 +21,85 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install dependencies
+      - name: Install packaging dependencies
         run: |
           python -m pip install --upgrade pip
           pip install ".[dev]"
 
-      - name: Verify CJK glyphs render (no tofu)
+      - name: Build one-click Web desktop executable
         shell: pwsh
         run: |
-          python -c "
-          import warnings, io
-          import matplotlib
-          import heatlab.ui.common
-          from matplotlib.figure import Figure
-          warnings.filterwarnings('error', message=r'Glyph .* missing from font')
-          fig = Figure(figsize=(4, 1))
-          ax = fig.add_subplot(111); ax.axis('off')
-          ax.text(0.5, 0.5, '花粉粒子运动轨迹｜时间平均 MSD｜4Dt｜二项分布理论｜速率 \$v\$ / (m·s\$^{-1}\$)',
-                  ha='center', va='center', fontsize=12, color='white')
-          buf = io.BytesIO()
-          fig.savefig(buf, facecolor='#0b0f14', format='png')
-          print('CJK glyph check passed')
-          "
+          pyinstaller --noconfirm --clean --onefile --windowed --name HeatLab-Web `
+            --paths src `
+            --add-data "src/heatlab/web/templates;heatlab/web/templates" `
+            --add-data "src/heatlab/web/static;heatlab/web/static" `
+            src/heatlab/web/launcher.py
 
-      - name: Build Windows binary (merged window)
+      - name: Smoke test bundled Web backend
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --name HeatLab `
-            --collect-all heatlab `
-            --add-data "src/heatlab/web/static/fonts;heatlab/web/static/fonts" `
-            src/heatlab/app.py
-
-      - name: Smoke test (launch then auto-kill)
-        shell: pwsh
-        run: |
-          $exe = "dist/HeatLab/HeatLab.exe"
+          $exe = "dist/HeatLab-Web.exe"
           if (-not (Test-Path $exe)) { Write-Error "missing $exe"; exit 1 }
-          $proc = Start-Process -FilePath $exe -PassThru
-          Start-Sleep -Seconds 15
-          if ($proc.HasExited) {
-            Write-Error "process exited early with rc=$($proc.ExitCode)"
-            exit 1
+
+          $port = 18765
+          $proc = Start-Process -FilePath $exe -ArgumentList @("--no-browser", "--port", "$port") -PassThru
+          try {
+            $health = $null
+            for ($attempt = 0; $attempt -lt 30; $attempt++) {
+              try {
+                $health = Invoke-WebRequest -Uri "http://127.0.0.1:$port/api/health" -TimeoutSec 2
+                if ($health.StatusCode -eq 200) { break }
+              } catch {
+                Start-Sleep -Milliseconds 500
+              }
+            }
+            if ($null -eq $health -or $health.StatusCode -ne 200) {
+              Write-Error "bundled Web backend did not become healthy"
+              exit 1
+            }
+
+            $healthPayload = $health.Content | ConvertFrom-Json
+            if ($healthPayload.app -ne "heatlab-web") {
+              Write-Error "unexpected health payload: $($health.Content)"
+              exit 1
+            }
+
+            $page = Invoke-WebRequest -Uri "http://127.0.0.1:$port/" -TimeoutSec 5
+            if ($page.Content -notmatch "HeatLab") {
+              Write-Error "bundled index page did not render"
+              exit 1
+            }
+
+            $stylesheet = Invoke-WebRequest -Uri "http://127.0.0.1:$port/static/app.css" -TimeoutSec 5
+            if ($stylesheet.Content -notmatch "--text-strong") {
+              Write-Error "bundled static assets did not render"
+              exit 1
+            }
+            Write-Output "bundled Web backend smoke test passed"
+          } finally {
+            if (-not $proc.HasExited) {
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            }
           }
-          Write-Output "still running after 15s: launch OK"
-          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 
-      - name: Verify bundled CJK font inside exe
+      - name: Package one-click executable
         shell: pwsh
         run: |
-          $font = Get-ChildItem -Path dist/HeatLab -Recurse -Filter DroidSansFallback.ttf |
-            Select-Object -First 1
-          if ($null -eq $font) { Write-Error "DroidSansFallback.ttf not bundled"; exit 1 }
-          Write-Output "bundled font: $($font.FullName) ($([math]::Round($font.Length/1KB)) KB)"
-
-      - name: Package zip
-        shell: pwsh
-        run: |
-          Compress-Archive -Path dist/HeatLab -DestinationPath HeatLab-win64.zip -Force
-          $item = Get-Item HeatLab-win64.zip
+          Compress-Archive -Path dist/HeatLab-Web.exe -DestinationPath HeatLab-Web-win64.zip -Force
+          $item = Get-Item HeatLab-Web-win64.zip
           Write-Output "artifact: $($item.Name) $([math]::Round($item.Length / 1MB, 1)) MB"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HeatLab-win64
-          path: HeatLab-win64.zip
+          name: HeatLab-Web-win64
+          path: HeatLab-Web-win64.zip
 
       - name: Publish release (on tag only)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: HeatLab-win64.zip
+          files: HeatLab-Web-win64.zip
           draft: false
           prerelease: true
           generate_release_notes: false

@@ -5,12 +5,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](CHANGELOG.md)
 
-> 交互式热学科学计算实验台：理想气体 · 布朗运动 · 麦克斯韦速率分布 · 伽尔顿板  
-> 提供 **浏览器实时版（推荐）** 与 **桌面 GUI（PySide6）** 两种入口。
+> 交互式热学科学计算实验台：理想气体 · 布朗运动 · 麦克斯韦速率分布 · 伽尔顿板
+> 提供 **浏览器实时版**、**Windows Web 一键演示版（推荐）** 与旧版 PySide6 源码入口。
 
 > [!IMPORTANT]
 > ## 🖥️ 强烈推荐使用 Web 端
-> 桌面版（PySide6）功能较为基础，仅用于快速离线预览；**所有完整交互体验都集中在浏览器实时版**：3D P-V-T 相图（旋转/缩放/悬停）、P-V / P-T / V-T 平面图、首次进入专题的实验说明（KaTeX 公式）、图表全屏放大、自动步进与采样等。
+> 旧桌面版（PySide6）功能较为基础，仅用于源码对照；**所有完整交互体验都集中在浏览器实时版**：3D P-V-T 相图（旋转/缩放/悬停）、P-V / P-T / V-T 平面图、首次进入专题的实验说明（KaTeX 公式）、图表全屏放大、自动步进与采样等。
 >
 > 启动方式（只需 Python 环境）：
 >
@@ -18,6 +18,8 @@
 > ./.venv/bin/heatlab-web        # 或 Windows: .venv\Scripts\heatlab-web.exe
 > # 浏览器打开 http://127.0.0.1:8765
 > ```
+>
+> **不想安装 Python？** 下载 GitHub Actions 构建的 `HeatLab-Web-win64.zip`，解压后双击 `HeatLab-Web.exe`；它会自动启动本地 Flask 后端并打开默认浏览器。演示版前端仍从 CDN 加载 Vue、Chart.js、Plotly 与 KaTeX，因此演示电脑需要联网。
 
 ![Validation montage](examples/validation/validation_montage.png)
 
@@ -50,9 +52,9 @@
 
 三种使用方式：
 
-1. **浏览器实时版（推荐）** — `heatlab-web` → <http://127.0.0.1:8765>，功能最完整
-2. **合并桌面版** — 一个窗口四个 Tab（`heatlab`）
-3. **单专题桌面版** — `heatlab-ideal-gas` 等独立窗口
+1. **Windows Web 一键演示版（推荐）** — 下载 `HeatLab-Web-win64.zip`，解压后双击 `HeatLab-Web.exe`
+2. **浏览器实时版** — `heatlab-web` → <http://127.0.0.1:8765>，源码开发与本地调试入口
+3. **旧版 PySide6 桌面版** — `heatlab` / `heatlab-ideal-gas` 等，仅保留用于源码对照，不再作为主要演示入口
 
 桌面版与 Web 版共享同一套模型层与 VS Code Dark+ 工作台视觉：顶栏（品牌 + 种子命令托盘 + 运行簇）、专题 Tab、三栏「参数 | 场景 | 图表」、底部状态栏。桌面 Matplotlib 图例/图注在深色主题下强制浅色文字并优先常规字重中文字体，避免黑字或细体字不可读。
 
@@ -62,13 +64,20 @@ Web 端新增交互特性：
 - **专题信息弹窗**：首次进入每个专题时弹出说明面板，包含按任务文档编写的**实验说明 + 使用教程**，公式用 **KaTeX** 渲染
 - **全屏查看**：3D 相图与每个平面图右上角有放大按钮，弹窗内保留图注、坐标轴与 Plotly 工具栏
 
-### Windows 预览客户端（桌面基础版）
+### Windows Web 一键演示版（推荐）
 
-不想装 Python 也可以快速体验桌面版（**基础功能，非完整 Web 版**）：GitHub Actions 自动用 PyInstaller 编译的 **Windows 合并版**（四 Tab 一个窗口），解压即用。
+这是给课堂演示和他人体验准备的 **Web + Flask 后端打包版**，不是重新制作一套简陋的 PySide6 窗口：
 
-- 下载：[v0.2.0-preview Release](https://github.com/WALKERKILLER/heatlab/releases/tag/v0.2.0-preview) → `HeatLab-win64.zip`（约 112 MB）
-- 使用：解压后双击 `HeatLab\HeatLab.exe`
-- 说明：预览版自动构建于每次打 `v*` tag 时（见 [build-windows workflow](.github/workflows/build-windows.yml)）；已内置中文字体，离线可用。**完整交互（3D 相图、平面图、放大弹窗、专题说明）请使用浏览器实时版。**
+1. 从 GitHub Actions 的 [build-windows workflow](.github/workflows/build-windows.yml) 下载 `HeatLab-Web-win64` artifact；发布 `v*` tag 后也会自动附加 `HeatLab-Web-win64.zip`。
+2. 解压 `HeatLab-Web-win64.zip`。
+3. 双击 `HeatLab-Web.exe`，程序会启动本地服务并打开默认浏览器。
+4. 浏览器访问地址默认是 `http://127.0.0.1:8765`；如果端口被占用，启动器会自动尝试附近端口。
+
+该 exe 已包含 Python、Flask 后端、模型和 Web 模板/静态资源，不需要额外安装 Python。Vue、Chart.js、Plotly、KaTeX 仍从 CDN 加载，因此首次演示需要联网。关闭浏览器不会自动结束后端进程；演示结束后请退出 `HeatLab-Web.exe`，或在任务管理器中结束该进程。
+
+### 旧版 PySide6 桌面版（不推荐）
+
+源码仍保留 `heatlab`、`heatlab-ideal-gas` 等入口，便于数值模型和桌面代码对照，但其界面与功能落后于 Web 版，Windows 发布工作流已不再打包它。完整交互（3D 相图、平面图、放大弹窗、专题说明）请使用上面的 Web 入口。
 
 ## 仓库结构
 
@@ -131,9 +140,17 @@ pip install -e .
 
 ## 快速开始
 
-> **推荐直接使用浏览器实时版**（功能最完整）；桌面版仅供快速离线预览。
+> **给别人演示时优先使用 Windows Web 一键演示版**；开发者本地则使用 Python 浏览器实时版。PySide6 桌面版仅保留为旧源码入口。
 
-### 浏览器实时版（推荐）
+### Windows Web 一键演示版（推荐）
+
+```text
+下载 HeatLab-Web-win64.zip → 解压 → 双击 HeatLab-Web.exe
+```
+
+程序会自动启动内置 Flask 后端并打开默认浏览器，不需要安装 Python。演示电脑需要联网加载 CDN 前端依赖；退出时请关闭 `HeatLab-Web.exe`。
+
+### 浏览器实时版（开发/本地调试）
 
 ```bash
 ./.venv/bin/heatlab-web
@@ -151,7 +168,7 @@ pip install -e .
 
 > 开发服务器仅供本机实验；公网部署请换 WSGI 并阅读 [SECURITY.md](SECURITY.md)。
 
-### 桌面版（基础版，不推荐日常使用）
+### 旧版 PySide6 桌面版（不推荐）
 
 ```bash
 ./.venv/bin/heatlab                  # 四专题合并窗口
@@ -176,6 +193,8 @@ pip install -e .
 3. 每帧 `POST /api/live/<topic>/step` 推进模型并返回数据
 4. Canvas 重绘场景；Chart.js 刷新曲线/直方图
 5. 暂停停止步进；重置按新种子重建会话
+
+Windows 一键演示版使用 `heatlab.web.launcher` 启动同一个 Flask 应用：先绑定本机回环地址，再打开默认浏览器；如果默认端口被占用，会在附近端口中选择空闲端口。
 
 热力学相图为 **P-V-T 相图**（对齐任务文档「PV-T 相图：给出 (P,V,T) 坐标值」）：
 
@@ -217,7 +236,7 @@ pip install -e .
 
 ## 物理建模边界
 
-- **理想气体**：视觉粒子忽略相互作用；T 控速度尺度，P/T 经状态方程决定 V；显示速度系数 1.5（仅影响观感，不改变物理状态）  
+- **理想气体**：视觉粒子忽略相互作用；T 控速度尺度，P/T 经状态方程决定 V；显示速度系数 1.5（仅影响观感，不改变物理状态）。透明粒子箱是**相对显示体积**：长度按 T/P 缩放并限制在 `0.45–1.60`，高度/深度固定为显示单位，不能理解为真实容器的三维绝对尺寸；物理体积以 `V=nRT/P` 读数为准。
 - **布朗运动**：原文缺黏度等 SI 参数 → 无量纲 Langevin；质量滑条下限 `0.05 m₀`。液体分子层采用 **Ornstein-Uhlenbeck 热运动 + 硬球弹性碰撞**（借鉴开源硬球模型，如 `Yangliu20/physics-simulation` 的粒子弹性碰撞与轨迹/碰撞点可视化思路）  
 - **麦克斯韦**：默认氮气分子质量，温度 0–100 °C；显示速度系数 1.5，粒子活跃运动  
 - **伽尔顿板**：固定 12 层、`p=0.5`；UI 粒子数 1–100  

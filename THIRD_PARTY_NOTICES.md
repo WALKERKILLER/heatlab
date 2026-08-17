@@ -13,6 +13,7 @@ shipped by each dependency.
 | Matplotlib | scientific plots (desktop) | https://github.com/matplotlib/matplotlib |
 | PySide6 / Qt for Python | desktop GUI | https://doc.qt.io/qtforpython-6/ |
 | Flask | browser UI HTTP API | https://github.com/pallets/flask |
+| PyInstaller | Windows Web executable packaging | https://github.com/pyinstaller/pyinstaller |
 | pytest / ruff / mypy | development tooling | respective upstream projects |
 
 ## Front-end (CDN, browser runtime)
@@ -26,6 +27,9 @@ shipped by each dependency.
 
 Binary redistributors should collect license/notice files from the resolved
 dependency versions and review Qt licensing for their distribution method.
+The Windows Web executable bundles the Python backend and local Web assets;
+Vue, Chart.js, Plotly.js, and KaTeX are still fetched from their CDNs by the
+browser at runtime, so a demo machine needs network access for the full UI.
 
 ## 算法/视觉参考（开源项目，仅借鉴思路，不复制源码）
 

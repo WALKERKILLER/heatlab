@@ -263,8 +263,12 @@
               {{ sweep.enabled ? '停止步进' : '开始步进' }}
             </button>
           </div>
+          <div class="physics-note" role="note">
+            <strong>显示边界说明</strong>
+            <span>粒子箱是“相对显示体积”：长度按 T/P 缩放并限制在 0.45–1.60，仅用于视觉呈现；物理体积以右侧 V = nRT/P 读数为准。</span>
+          </div>
           <div class="metrics" v-if="ideal.data" role="group" aria-label="热力学实时读数">
-            <div class="metric-item"><span>体积 V</span><strong>{{ ideal.data.volume_litre.toFixed(4) }} L</strong></div>
+            <div class="metric-item"><span>物理体积 V</span><strong>{{ ideal.data.volume_litre.toFixed(4) }} L</strong></div>
             <div class="metric-item"><span>温度 T</span><strong>{{ ideal.data.temperature_k.toFixed(2) }} K</strong></div>
             <div class="metric-item"><span>设定 P</span><strong>{{ ideal.data.pressure_atm.toFixed(3) }} atm</strong></div>
             <div class="metric-item"><span>动能论 P</span><strong>{{ ideal.data.kinetic_pressure_atm.toFixed(3) }} atm</strong></div>
@@ -463,7 +467,7 @@
       <section class="stage-card scene-panel" aria-labelledby="scene-heading">
         <div class="card-chrome">
           <h3 class="card-title" id="scene-heading">{{ sceneTitle }}</h3>
-          <div class="card-badge" aria-hidden="true">场景</div>
+          <div class="card-badge" aria-hidden="true">{{ topic === "ideal-gas" ? "场景 · 相对体积" : "场景" }}</div>
         </div>
         <div class="canvas-host" ref="sceneHost">
           <canvas
@@ -663,8 +667,8 @@
 
     const CHART_FONT = { family: "'HeatLab CJK', 'Segoe UI', sans-serif" };
     const AXIS = {
-      color: "#9d9d9d",
-      grid: "rgba(62, 62, 66, 0.9)",
+      color: "#c6ced8",
+      grid: "rgba(91, 105, 122, 0.58)",
     };
     const COLORS = {
       blue: "#3794ff",
@@ -672,16 +676,16 @@
       yellow: "#dcdcaa",
       purple: "#c586c0",
       orange: "#ce9178",
-      fg: "#cccccc",
+      fg: "#e1e7ef",
       strong: "#ffffff",
-      editor: "#1e1e1e",
-      editorAlt: "#252526",
+      editor: "#171c24",
+      editorAlt: "#222a35",
     };
 
     createApp({
       setup() {
         const topics = [
-          { id: "ideal-gas", kicker: "01", label: "热力学", desc: "P-V 轨迹", lead: "调 T/P 或切换等温/等压/等容过程，观察分子运动与 P-V 状态轨迹。" },
+          { id: "ideal-gas", kicker: "01", label: "热力学", desc: "P-V 轨迹", lead: "调 T/P 或切换过程，观察分子运动与 P-V 轨迹；粒子箱是相对显示体积。" },
           { id: "brownian", kicker: "02", label: "布朗运动", desc: "轨迹与扩散", lead: "液体分子随机撞击花粉粒子，产生布朗运动；可观察轨迹、碰撞与扩散常数。" },
           { id: "maxwell", kicker: "03", label: "麦克斯韦", desc: "速率与水平分量分布", lead: "对照速率 f(v) 与水平速度分量 v_x 的理论分布与样本。" },
           { id: "galton", kicker: "04", label: "伽尔顿板", desc: "二项分布", lead: "粒子逐层下落，槽位分布逼近二项分布。" },
@@ -769,10 +773,11 @@
             ],
             description: [
               "理想气体在封闭空间中做无规则热运动：温度升高、压强变化时体积随之变化，分子热运动加剧，体现温度与压强的微观物理意义。",
+              "场景中的透明粒子箱是按 T/P 缩放的相对显示体积，不代表真实容器的三维绝对尺寸；物理体积以 V=nRT/P 读数为准。",
               "可切换等温 / 等压 / 等容准静态过程，观察 P-V 轨迹与三维 P-V-T 相图上的 (P, V, T) 坐标值。",
             ],
             usage: [
-              "拖动「温度 T（0–100 °C）」与「压强 P（1–2 atm）」滑条观察分子运动与体积变化。",
+              "拖动「温度 T（0–100 °C）」与「压强 P（1–2 atm）」滑条观察分子运动与相对显示体积变化。",
               "在「过程模式」中选择 等温 / 等压 / 等容，相图上叠加理论过程线。",
               "开启「自动步进」可让温度或压强连续变化，观察准静态过程。",
             ],
@@ -892,9 +897,9 @@
         function axisScale(titleText) {
           return {
             title: { display: true, text: titleText, color: AXIS.color, font: CHART_FONT },
-            ticks: { color: AXIS.color, font: { ...CHART_FONT, size: 11 }, maxTicksLimit: 6 },
+            ticks: { color: AXIS.color, font: { ...CHART_FONT, size: 12 }, maxTicksLimit: 6 },
             grid: { color: AXIS.grid },
-            border: { color: "#3e3e42" },
+            border: { color: "#556273" },
           };
         }
 
@@ -909,7 +914,7 @@
               maintainAspectRatio: false,
               plugins: {
                 legend: {
-                  labels: { color: COLORS.fg, font: { ...CHART_FONT, size: 11 }, boxWidth: 10, boxHeight: 10 },
+                  labels: { color: COLORS.fg, font: { ...CHART_FONT, size: 12 }, boxWidth: 12, boxHeight: 12 },
                 },
                 ...(config.options?.plugins || {}),
               },
@@ -1092,6 +1097,23 @@
             ctx.fill();
           }
           ctx.globalAlpha = 1;
+
+          // Keep the visual scale distinction visible inside the scene itself.
+          ctx.save();
+          const noteText = "相对显示体积 · 长度按 T/P 缩放";
+          ctx.font = "12px 'HeatLab CJK', 'Segoe UI', sans-serif";
+          const noteWidth = ctx.measureText(noteText).width + 18;
+          ctx.fillStyle = "rgba(18, 24, 32, 0.86)";
+          ctx.strokeStyle = "rgba(255, 159, 67, 0.42)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(12, 12, noteWidth, 26, 6);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "#ffd1a8";
+          ctx.textBaseline = "middle";
+          ctx.fillText(noteText, 21, 25);
+          ctx.restore();
         }
 
         // P-V-T 相图：使用 Plotly 3D（PV=nRT 曲面 + 轨迹 + 悬停坐标）
@@ -1135,7 +1157,7 @@
               orientation: "h",
               x: 0.02,
               y: 1.04,
-              font: { color: COLORS.fg, size: 11 },
+              font: { color: COLORS.fg, size: 12 },
             },
             scene: {
               xaxis: { title: "P / atm", ...axis, range: [0.9, 2.1] },
@@ -1440,7 +1462,7 @@
               orientation: "h",
               x: 0.02,
               y: 1.1,
-              font: { color: COLORS.fg, size: 11 },
+              font: { color: COLORS.fg, size: 12 },
             },
             scene: {
               xaxis: { title: "P / atm", ...axis, range: [0.9, 2.1] },
@@ -1815,7 +1837,7 @@
           ctx.roundRect(legendX, legendY, legendW, legendH, 6);
           ctx.fill();
           ctx.stroke();
-          ctx.font = "11px 'HeatLab CJK', 'Segoe UI', sans-serif";
+          ctx.font = "12px 'HeatLab CJK', 'Segoe UI', sans-serif";
           ctx.textBaseline = "middle";
           legendItems.forEach((item, index) => {
             const y = legendY + legendPad + index * legendItemH + legendItemH / 2;

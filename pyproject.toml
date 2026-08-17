@@ -29,6 +29,7 @@ dev = [
 [project.scripts]
 heatlab = "heatlab.app:main"
 heatlab-web = "heatlab.web.app:main"
+heatlab-web-desktop = "heatlab.web.launcher:main"
 heatlab-ideal-gas = "heatlab.app:main_ideal_gas"
 heatlab-brownian = "heatlab.app:main_brownian"
 heatlab-maxwell = "heatlab.app:main_maxwell"
