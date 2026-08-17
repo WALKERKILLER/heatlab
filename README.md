@@ -3,7 +3,7 @@
 [![CI](https://github.com/WALKERKILLER/heatlab/actions/workflows/ci.yml/badge.svg)](https://github.com/WALKERKILLER/heatlab/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](https://github.com/WALKERKILLER/heatlab/releases/tag/v0.2.0)
 
 > 交互式热学科学计算实验台：理想气体 · 布朗运动 · 麦克斯韦速率分布 · 伽尔顿板
 > 提供 **浏览器实时版**、**Windows Web 一键演示版（推荐）** 与旧版 PySide6 源码入口。
@@ -19,7 +19,7 @@
 > # 浏览器打开 http://127.0.0.1:8765
 > ```
 >
-> **不想安装 Python？** 下载 GitHub Actions 构建的 `HeatLab-Web-win64.zip`，解压后双击 `HeatLab-Web.exe`；它会自动启动本地 Flask 后端并打开默认浏览器。演示版前端仍从 CDN 加载 Vue、Chart.js、Plotly 与 KaTeX，因此演示电脑需要联网。
+> **不想安装 Python？** 直接下载 [HeatLab-Web-win64.zip（v0.2.0 正式版）](https://github.com/WALKERKILLER/heatlab/releases/download/v0.2.0/HeatLab-Web-win64.zip)，解压后双击 `HeatLab-Web.exe`；它会自动启动本地 Flask 后端并打开默认浏览器。演示版前端仍从 CDN 加载 Vue、Chart.js、Plotly 与 KaTeX，因此演示电脑需要联网。
 
 ![Validation montage](examples/validation/validation_montage.png)
 
@@ -52,7 +52,7 @@
 
 三种使用方式：
 
-1. **Windows Web 一键演示版（推荐）** — 下载 `HeatLab-Web-win64.zip`，解压后双击 `HeatLab-Web.exe`
+1. **Windows Web 一键演示版（推荐）** — [下载 v0.2.0 正式版](https://github.com/WALKERKILLER/heatlab/releases/tag/v0.2.0)，解压后双击 `HeatLab-Web.exe`
 2. **浏览器实时版** — `heatlab-web` → <http://127.0.0.1:8765>，源码开发与本地调试入口
 3. **旧版 PySide6 桌面版** — `heatlab` / `heatlab-ideal-gas` 等，仅保留用于源码对照，不再作为主要演示入口
 
@@ -68,7 +68,7 @@ Web 端新增交互特性：
 
 这是给课堂演示和他人体验准备的 **Web + Flask 后端打包版**，不是重新制作一套简陋的 PySide6 窗口：
 
-1. 从 GitHub Actions 的 [build-windows workflow](.github/workflows/build-windows.yml) 下载 `HeatLab-Web-win64` artifact；发布 `v*` tag 后也会自动附加 `HeatLab-Web-win64.zip`。
+1. 从 [v0.2.0 Release](https://github.com/WALKERKILLER/heatlab/releases/tag/v0.2.0) 下载 `HeatLab-Web-win64.zip`；后续版本也会沿用同一 Release 下载方式。
 2. 解压 `HeatLab-Web-win64.zip`。
 3. 双击 `HeatLab-Web.exe`，程序会启动本地服务并打开默认浏览器。
 4. 浏览器访问地址默认是 `http://127.0.0.1:8765`；如果端口被占用，启动器会自动尝试附近端口。
@@ -145,7 +145,7 @@ pip install -e .
 ### Windows Web 一键演示版（推荐）
 
 ```text
-下载 HeatLab-Web-win64.zip → 解压 → 双击 HeatLab-Web.exe
+下载 [HeatLab-Web-win64.zip（v0.2.0）](https://github.com/WALKERKILLER/heatlab/releases/download/v0.2.0/HeatLab-Web-win64.zip) → 解压 → 双击 HeatLab-Web.exe
 ```
 
 程序会自动启动内置 Flask 后端并打开默认浏览器，不需要安装 Python。演示电脑需要联网加载 CDN 前端依赖；退出时请关闭 `HeatLab-Web.exe`。
@@ -271,7 +271,7 @@ Windows 一键演示版使用 `heatlab.web.launcher` 启动同一个 Flask 应�
   title  = {HeatLab: Thermal Physics Scientific Computing Lab},
   author = {{HeatLab project team}},
   year   = {2026},
-  version = {0.1.0},
+  version = {0.2.0},
   license = {MIT}
 }
 ```

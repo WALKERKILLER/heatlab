@@ -4,8 +4,8 @@ message: If you use this software, please cite it as below.
 type: software
 authors:
   - name: HeatLab project team
-version: 0.1.0
-date-released: "2026-08-08"
+version: 0.2.0
+date-released: "2026-08-18"
 license: MIT
 abstract: >
   Interactive thermal-physics visualizations for ideal gas kinetics,

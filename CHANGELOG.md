@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+暂无已记录变更。
+
+### Planned
+- Web 会话可换 Redis 以支持多进程部署
+- 可选 WebSocket 推流，降低高频 step 轮询
+- 桌面与 Web 统一可调动画步长
+
+## [0.2.0] - 2026-08-18
+
 ### Added
 - 新增 `heatlab-web-desktop` 启动器：用 PyInstaller 将 Flask 后端、模型、模板和静态资源封装为 Windows 一键演示版 `HeatLab-Web.exe`；启动后自动打开默认浏览器，GitHub Actions 产出 `HeatLab-Web-win64.zip`
 - 热力学专题新增**等温 / 等压 / 等容**准静态过程模式：P-V 图叠加理论过程线，等容下压强由温度驱动
@@ -38,11 +47,6 @@
 - 桌面 Matplotlib 图注/图例/坐标轴在深色背景下使用浅色文字，避免黑字看不清
 - 图例文字改为纯白并放大到 11pt；优先使用常规字重中文字体（Droid Sans Fallback），避免细体小字在深色底上难以辨认
 
-### Planned
-- Web 会话可换 Redis 以支持多进程部署
-- 可选 WebSocket 推流，降低高频 step 轮询
-- 桌面与 Web 统一可调动画步长
-
 ## [0.1.0] - 2026-08-08
 
 ### Added
@@ -55,5 +59,6 @@
 - 单元测试、数值验证脚本与示例输出图
 - MIT 许可证与第三方声明
 
-[Unreleased]: https://github.com/WALKERKILLER/heatlab/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/WALKERKILLER/heatlab/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/WALKERKILLER/heatlab/releases/tag/v0.2.0
 [0.1.0]: https://github.com/WALKERKILLER/heatlab/releases/tag/v0.1.0

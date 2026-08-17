@@ -101,5 +101,5 @@ jobs:
         with:
           files: HeatLab-Web-win64.zip
           draft: false
-          prerelease: true
-          generate_release_notes: false
+          prerelease: false
+          generate_release_notes: true
