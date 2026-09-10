@@ -222,14 +222,15 @@ class BrownianModel:
             velocities[below, axis] = -velocities[below, axis]
             velocities[above, axis] = -velocities[above, axis]
 
-    def _collide_liquids(self, iterations: int = 8) -> None:
+    def _collide_liquids(self, iterations: int = 16) -> None:
         """Hard-sphere elastic collisions between liquid molecules.
 
         Adopts the hard-sphere model used by open-source brownian simulations
         (e.g. Yangliu20/physics-simulation): equal-mass elastic collisions that
         swap the normal velocity component, plus positional separation.  The
-        whole pair sweep is vectorised, which keeps the O(n^2) detection cheap
-        for the UI's n <= 100 limit.
+        whole pair sweep is vectorised, and the extra projection passes ensure
+        dense scenes settle below the hard-sphere overlap tolerance instead of
+        carrying a small penetration into the next time step.
         """
 
         positions = self.liquid_positions

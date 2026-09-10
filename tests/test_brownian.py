@@ -99,6 +99,18 @@ def test_dense_liquid_molecules_do_not_overlap_each_other() -> None:
     assert np.all(distances >= 2.0 * 0.012 - 1e-9)
 
 
+def test_dense_liquid_separation_is_stable_across_repeated_runs() -> None:
+    for seed in range(10):
+        model = BrownianModel(RandomManager(seed).stream("brownian"))
+        model.set_parameters(0.5, 100)
+        for _ in range(20):
+            model.step()
+        delta = model.liquid_positions[:, None, :] - model.liquid_positions[None, :, :]
+        distances = np.sqrt(np.einsum("ijk,ijk->ij", delta, delta))
+        distances[np.diag_indices_from(distances)] = np.inf
+        assert distances.min() >= 2.0 * 0.012 - 1e-9
+
+
 def test_single_liquid_molecule_keeps_speed_distribution_visible() -> None:
     payload = brownian_snapshot(seed=12, mass_ratio=0.05, molecule_count=1, steps=1)
     assert payload["speed_hist_v"]
