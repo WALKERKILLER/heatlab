@@ -39,6 +39,9 @@ def ideal_gas_snapshot(
         "pressure_atm": state.pressure_atm,
         "temperature_k": state.temperature_k,
         "volume_litre": state.volume_litre,
+        "experiment_mode": model.experiment_mode,
+        "reference_volume_litre": model.reference_volume_litre,
+        "adiabatic_reference_volume_litre": model.adiabatic_reference_volume_litre,
         "box_width": model.box_width,
         "box_length": model.box_length,
         "box_height": model.box_height,
@@ -48,6 +51,21 @@ def ideal_gas_snapshot(
         "speeds": _array_to_list(model.speeds),
         "phase_history": _array_to_list(history),
         "process_mode": state.process_mode,
+        "observables": {
+            "pressure_pa": state.pressure_pa,
+            "pressure_atm": state.pressure_atm,
+            "volume_m3": state.volume_m3,
+            "volume_litre": state.volume_litre,
+            "temperature_k": state.temperature_k,
+            "mean_translational_kinetic_energy_j": state.mean_translational_kinetic_energy_j,
+            "mean_speed_mps": model.mean_speed_mps,
+            "rms_speed_mps": model.rms_speed_mps,
+            "kinetic_pressure_pa": model.kinetic_pressure_pa(),
+            "kinetic_pressure_atm": model.kinetic_pressure_pa() / STANDARD_ATMOSPHERE,
+            "internal_energy_j": model.internal_energy_j,
+            "heat_added_j": model.heat_added_j,
+            "work_by_gas_j": model.work_by_gas_j,
+        },
         "process_line": (
             {"points": _array_to_list(np.column_stack(process_line))}
             if process_line is not None
@@ -110,9 +128,12 @@ def _liquid_speed_distribution(
 ) -> dict[str, Any]:
     """2-D Maxwell-Boltzmann histogram (f(v)=v/σ²·exp(-v²/2σ²)) for liquids."""
 
-    if len(speeds) < 4 or sigma <= 0.0:
+    if len(speeds) == 0 or sigma <= 0.0:
         return {"speed_hist_v": [], "speed_hist_f": [], "speed_theory_v": [], "speed_theory_f": []}
-    hist_counts, bin_edges = np.histogram(speeds, bins=bins, density=True)
+    # Keep the 1–100 UI range useful: a single molecule still has a valid
+    # speed sample, so use a fixed positive range instead of dropping it.
+    upper = max(3.0 * sigma, float(np.max(speeds)) * 1.1)
+    hist_counts, bin_edges = np.histogram(speeds, bins=bins, range=(0.0, upper), density=True)
     bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
     theory_v = np.linspace(0.0, float(bin_edges[-1]), 120)
     theory_f = (theory_v / sigma**2) * np.exp(-(theory_v**2) / (2.0 * sigma**2))

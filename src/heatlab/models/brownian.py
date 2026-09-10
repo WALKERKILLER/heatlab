@@ -1,23 +1,26 @@
-"""Brownian motion: visible liquid molecules striking one pollen grain.
+"""Brownian motion: explicit liquid molecules striking one pollen grain.
 
 The source brief asks for "many liquid molecules striking a pollen grain",
-producing Brownian motion.  This module couples two approaches found in
-mature open-source simulations:
+producing Brownian motion.  This module uses a small explicit-solvent model:
 
-* a visible layer of liquid molecules under Ornstein-Uhlenbeck thermal motion:
-  their speeds keep a 2-D Maxwell-Boltzmann distribution, they bounce off the
-  container walls and elastically off the pollen grain, and their hits are
-  counted for the collision highlight; and
-* Langevin dynamics for the pollen grain itself (random aggregate kicks +
-  Stokes-like drag), so the long-time diffusion coefficient D = theta / gamma
-  stays well defined and the MSD curve remains linear.
+* liquid molecules receive Ornstein-Uhlenbeck thermalization, keep a 2-D
+  Maxwell-Boltzmann speed scale, and elastically collide with the walls and
+  each other; and
+* a pollen grain changes momentum only when a liquid molecule actually
+  contacts it.  The collision is a two-body elastic collision, so a single
+  molecule cannot apply a random force while it is elsewhere in the box.
+
+The analytic ``theta / gamma`` value remains a continuum Langevin reference
+for the MSD chart.  It is not used as an additional force in the explicit
+collision trajectory, which avoids double-counting the solvent fluctuations.
 
 The two UI parameters are physically meaningful here:
 
-* ``mass_ratio`` (m / m0): heavier grains barely move per kick and diffuse
+* ``mass_ratio`` (m / m0): heavier grains receive a smaller velocity change per
+  collision and diffuse
   more slowly (their radius also grows, mimicking mass proportional to area);
-* ``molecule_count`` n: more molecules make the liquid denser and the
-  aggregate kick more Gaussian (1 molecule visibly "pushes" the grain).
+* ``molecule_count`` n: more molecules make the liquid denser and collisions
+  more frequent; n=1 is intentionally a sparse, intermittent bath.
 
 All values are explicit dimensionless units (the brief gives no physical scale).
 """
@@ -38,11 +41,11 @@ _LIQUID_MASS = 0.02
 _LIQUID_RADIUS = 0.012
 _LIQUID_RELAXATION = 12.0  # OU rate: how fast a molecule forgets its velocity
 
-# Pollen grain: heavy, big, driven by Langevin dynamics.
+# Pollen grain: heavy, big, moved by explicit solvent collisions.
 _POLLEN_MASS_BASE = 1.0
 _POLLEN_RADIUS_MIN = 0.050
 _POLLEN_RADIUS_MAX = 0.115
-_DRAG_BASE = 0.5  # Stokes-like drag coefficient
+_DRAG_BASE = 0.5  # Continuum reference drag coefficient.
 
 # Thermal energy of the liquid bath; fixes the molecular speed scale.
 _THERMAL_ENERGY = 0.02
@@ -56,10 +59,20 @@ class BrownianParameters:
     dt: float = 0.005
     theta: float = _THERMAL_ENERGY
 
+    def __post_init__(self) -> None:
+        if not np.isfinite(self.mass_ratio) or not 0.05 <= self.mass_ratio <= 1.0:
+            raise ValueError("mass_ratio must be finite and within [0.05, 1.0]")
+        if not isinstance(self.molecule_count, (int, np.integer)) or not 1 <= self.molecule_count <= 100:
+            raise ValueError("molecule_count must be an integer within [1, 100]")
+        if not np.isfinite(self.dt) or self.dt <= 0.0:
+            raise ValueError("dt must be finite and positive")
+        if not np.isfinite(self.theta) or self.theta <= 0.0:
+            raise ValueError("theta must be finite and positive")
+
     @property
     def effective_mass(self) -> float:
-        # The brief writes 0..m0; a literal zero makes dv/dt singular, so the
-        # UI maps its lower endpoint to 0.05 m0 and states this explicitly.
+        # The brief writes 0..m0; a literal zero makes the collision impulse
+        # singular, so the UI maps its lower endpoint to 0.05 m0 explicitly.
         return _POLLEN_MASS_BASE * max(0.05, self.mass_ratio)
 
     @property
@@ -101,9 +114,24 @@ class BrownianModel:
         self.reset()
 
     def set_parameters(self, mass_ratio: float, molecule_count: int) -> None:
-        self.params.mass_ratio = float(np.clip(mass_ratio, 0.05, 1.0))
-        self.params.molecule_count = int(np.clip(molecule_count, 1, 100))
-        self._ensure_liquid_count()
+        if not np.isfinite(mass_ratio):
+            raise ValueError("mass_ratio must be finite")
+        if not isinstance(molecule_count, (int, np.integer)):
+            raise ValueError("molecule_count must be an integer")
+        next_mass = float(np.clip(mass_ratio, 0.05, 1.0))
+        next_count = int(np.clip(molecule_count, 1, 100))
+        changed = (
+            not np.isclose(next_mass, self.params.mass_ratio)
+            or next_count != self.params.molecule_count
+        )
+        self.params.mass_ratio = next_mass
+        self.params.molecule_count = next_count
+        if changed:
+            # A new density or grain mass is a new experiment. Do not mix its
+            # path and MSD with samples collected under the old condition.
+            self.reset()
+        else:
+            self._ensure_liquid_count()
 
     @property
     def liquid_speeds(self) -> np.ndarray:
@@ -132,25 +160,9 @@ class BrownianModel:
         # Gaussian thermal velocities: v ~ N(0, sigma^2 I).
         self.liquid_velocities = _LIQUID_SPEED_SIGMA * self.rng.standard_normal((count, 2))
 
-    def _finite_collision_kick(self) -> np.ndarray:
-        """Return a variance-normalized sum of random molecular impacts.
-
-        More molecules make the aggregate kick more nearly Gaussian, while the
-        1/sqrt(N) normalization keeps the thermal energy constant rather than
-        incorrectly raising temperature with the UI particle count.
-        """
-
-        count = self.params.molecule_count
-        angles = self.rng.uniform(0.0, 2.0 * np.pi, size=count)
-        unit_vectors = np.column_stack((np.cos(angles), np.sin(angles)))
-        return np.sqrt(2.0) * unit_vectors.sum(axis=0) / np.sqrt(count)
-
     def step(self, substeps: int = 4) -> None:
         if substeps < 1:
             raise ValueError("substeps must be >= 1")
-        m = self.params.effective_mass
-        gamma = self.params.gamma
-        theta = self.params.theta
         dt = self.params.dt
         relaxation = _LIQUID_RELAXATION
         speed_sigma = _LIQUID_SPEED_SIGMA
@@ -159,17 +171,15 @@ class BrownianModel:
         for _ in range(substeps):
             # 1) Liquid molecules: Ornstein-Uhlenbeck thermal motion + walls.
             velocities = self.liquid_velocities
-            velocities += (
-                -relaxation * velocities * dt
-                + np.sqrt(2.0 * relaxation * speed_sigma * speed_sigma * dt)
-                * rng.standard_normal(velocities.shape)
+            # Exact Ornstein-Uhlenbeck update. Unlike Euler-Maruyama plus a
+            # speed cap, this preserves the Maxwell-Boltzmann stationary
+            # variance and keeps the rare high-speed tail physically valid.
+            decay = np.exp(-relaxation * dt)
+            noise_scale = speed_sigma * np.sqrt(-np.expm1(-2.0 * relaxation * dt))
+            velocities[:] = (
+                decay * velocities
+                + noise_scale * rng.standard_normal(velocities.shape)
             )
-            # Guard the rare high-speed tail so the explicit collision step
-            # stays stable (speed distribution keeps its Maxwell shape).
-            speeds = np.linalg.norm(velocities, axis=1)
-            over_speed = speeds > 3.0 * speed_sigma
-            if over_speed.any():
-                velocities[over_speed] *= (3.0 * speed_sigma / speeds[over_speed])[:, None]
             self.liquid_positions += velocities * dt
             self._bounce_liquids()
             # 1b) Liquid molecules bounce off each other (hard-sphere elastic
@@ -177,17 +187,20 @@ class BrownianModel:
             # liquid reads as a dense, colliding fluid rather than ghost dots.
             self._collide_liquids()
 
-            # 2) Pollen grain: Langevin equation dv/dt = -gamma/m v + noise/m.
-            kick = self._finite_collision_kick()
-            self.velocity += (
-                -(gamma / m) * self.velocity * dt
-                + (np.sqrt(2.0 * gamma * theta * dt) / m) * kick
-            )
+            # 2) Pollen grain: no independent random kick.  In this explicit
+            # solvent model, its momentum changes only in a real molecule
+            # contact below; otherwise one visible molecule must not create a
+            # spatially nonlocal force.
             self.position += self.velocity * dt
             self._bounce_pollen()
 
-            # 3) Liquid molecules strike the grain (elastic bounce + highlight).
+            # 3) Liquid molecules strike the grain (two-body elastic collision
+            # + highlight).  A second pass settles contacts created by the
+            # first collision response.
             self._collide_with_pollen()
+            self._collide_liquids()
+            self._collide_with_pollen()
+            self._bounce_pollen()
 
             self.elapsed += dt
 
@@ -209,14 +222,14 @@ class BrownianModel:
             velocities[below, axis] = -velocities[below, axis]
             velocities[above, axis] = -velocities[above, axis]
 
-    def _collide_liquids(self, iterations: int = 2) -> None:
+    def _collide_liquids(self, iterations: int = 8) -> None:
         """Hard-sphere elastic collisions between liquid molecules.
 
         Adopts the hard-sphere model used by open-source brownian simulations
         (e.g. Yangliu20/physics-simulation): equal-mass elastic collisions that
-        swap the normal velocity component, plus positional separation so
-        molecules never overlap.  The whole pair sweep is vectorised, which
-        keeps the O(n^2) detection cheap for n <= 100.
+        swap the normal velocity component, plus positional separation.  The
+        whole pair sweep is vectorised, which keeps the O(n^2) detection cheap
+        for the UI's n <= 100 limit.
         """
 
         positions = self.liquid_positions
@@ -235,58 +248,75 @@ class BrownianModel:
             if len(i_idx) == 0:
                 break
             dist = np.sqrt(dist_sq[i_idx, j_idx])
-            normal = delta[i_idx, j_idx] / dist[:, None]
+            normal = np.zeros((len(dist), 2), dtype=float)
+            nonzero = dist > 1.0e-12
+            normal[nonzero] = delta[i_idx[nonzero], j_idx[nonzero]] / dist[nonzero, None]
+            # Deterministic fallback for the rare exact co-location case.
+            normal[~nonzero, 0] = 1.0
             # Equal-mass elastic collision: only approaching pairs interact.
             rel_normal = np.einsum("ij,ij->i", velocities[i_idx] - velocities[j_idx], normal)
             approaching = rel_normal < 0.0
-            if not approaching.any():
-                break
-            i_idx, j_idx = i_idx[approaching], j_idx[approaching]
-            normal, rel_normal = normal[approaching], rel_normal[approaching]
-            velocities[i_idx] -= rel_normal[:, None] * normal
-            velocities[j_idx] += rel_normal[:, None] * normal
+            if approaching.any():
+                approaching_i = i_idx[approaching]
+                approaching_j = j_idx[approaching]
+                approaching_normal = normal[approaching]
+                approaching_rel = rel_normal[approaching]
+                velocities[approaching_i] -= approaching_rel[:, None] * approaching_normal
+                velocities[approaching_j] += approaching_rel[:, None] * approaching_normal
             # Push the overlapping pair apart by half the penetration each.
-            penetration = (min_dist - dist[approaching]) * 0.5
-            positions[i_idx] -= penetration[:, None] * normal
-            positions[j_idx] += penetration[:, None] * normal
-            self.liquid_collision_count += len(i_idx)
+            penetration = (min_dist - dist) * 0.5
+            positions[i_idx] += penetration[:, None] * normal
+            positions[j_idx] -= penetration[:, None] * normal
+            self.liquid_collision_count += int(approaching.sum())
 
     def _bounce_pollen(self) -> None:
         radius = self.params.pollen_radius
         if self.position[0] < _BOX_LOW + radius:
             self.position[0] = 2.0 * (_BOX_LOW + radius) - self.position[0]
-            self.velocity[0] = -abs(self.velocity[0])
+            self.velocity[0] = abs(self.velocity[0])
         elif self.position[0] > _BOX_HIGH - radius:
             self.position[0] = 2.0 * (_BOX_HIGH - radius) - self.position[0]
             self.velocity[0] = -abs(self.velocity[0])
         if self.position[1] < _BOX_LOW + radius:
             self.position[1] = 2.0 * (_BOX_LOW + radius) - self.position[1]
-            self.velocity[1] = -abs(self.velocity[1])
+            self.velocity[1] = abs(self.velocity[1])
         elif self.position[1] > _BOX_HIGH - radius:
             self.position[1] = 2.0 * (_BOX_HIGH - radius) - self.position[1]
             self.velocity[1] = -abs(self.velocity[1])
 
     def _collide_with_pollen(self) -> None:
-        count = self.params.molecule_count
         radius_sum = self.params.pollen_radius + _LIQUID_RADIUS
         radius_sum_sq = radius_sum * radius_sum
-        pollen = self.position
-        for i in range(count):
-            delta = self.liquid_positions[i] - pollen
+        liquid_mass = _LIQUID_MASS
+        pollen_mass = self.params.effective_mass
+        liquid_share = pollen_mass / (liquid_mass + pollen_mass)
+        pollen_share = liquid_mass / (liquid_mass + pollen_mass)
+        for i, liquid_position in enumerate(self.liquid_positions):
+            delta = liquid_position - self.position
             distance_sq = float(delta @ delta)
-            if distance_sq >= radius_sum_sq or distance_sq < 1.0e-12:
+            if distance_sq >= radius_sum_sq:
                 continue
             distance = np.sqrt(distance_sq)
-            normal = delta / distance
-            # Elastic bounce of the light molecule off the (heavy) grain.
-            relative_normal = float(self.liquid_velocities[i] @ normal)
+            # Exact co-location has no unique contact normal.  Keep the
+            # fallback deterministic; normal overlaps are prevented at spawn
+            # time and by positional separation below.
+            normal = delta / distance if distance > 1.0e-12 else np.array([1.0, 0.0])
+            relative_normal = float((self.liquid_velocities[i] - self.velocity) @ normal)
             if relative_normal < 0.0:
-                self.liquid_velocities[i] -= 2.0 * relative_normal * normal
-            self.liquid_positions[i] = pollen + normal * radius_sum
-            self.collision_count += 1
-            # Record the contact point ON the grain surface so the highlight
-            # lands exactly where the molecule struck (mainstream visual).
-            self.recent_collisions.append((pollen + normal * radius_sum).copy())
+                # Equal-and-opposite impulse for a 1-D normal elastic impact:
+                # J = -2 v_rel,n / (1/m_liquid + 1/m_pollen).
+                impulse = -2.0 * relative_normal / (1.0 / liquid_mass + 1.0 / pollen_mass)
+                self.liquid_velocities[i] += (impulse / liquid_mass) * normal
+                self.velocity -= (impulse / pollen_mass) * normal
+                self.collision_count += 1
+                # Record the contact point ON the grain surface so the
+                # highlight lands exactly where the molecule struck.
+                self.recent_collisions.append((self.position + normal * self.params.pollen_radius).copy())
+            # Separate the pair without pinning the pollen.  The heavier grain
+            # moves less, preserving the center of mass of the overlap.
+            penetration = radius_sum - distance
+            self.liquid_positions[i] += normal * (penetration * liquid_share)
+            self.position -= normal * (penetration * pollen_share)
         if len(self.recent_collisions) > 16:
             del self.recent_collisions[:-16]
 

@@ -50,25 +50,25 @@ class MaxwellTab(QWidget):
 
         velocity, density = self.model.distribution_curve()
         self.pdf_line, = self.ax_dist.plot(
-            velocity, density, color=ACCENT, linewidth=2.0, label="理论 f(v)"
+            velocity, density, color=ACCENT, linewidth=2.0, label="理论速率概率密度 f(v)"
         )
-        self.ax_dist.set_xlabel(r"速率 $v$ / (m·s$^{-1}$)")
-        self.ax_dist.set_ylabel("概率密度 f(v)")
-        self.ax_dist.set_title("速率分布 f(v)")
+        self.ax_dist.set_xlabel(r"气体分子速率 $v$ / (m·s$^{-1}$)")
+        self.ax_dist.set_ylabel("速率概率密度 f(v)")
+        self.ax_dist.set_title("气体分子速率概率密度")
         style_legend(self.ax_dist.legend(loc="upper right"))
 
         comp_velocity, comp_density = self.model.component_curve()
         self.comp_pdf_line, = self.ax_component.plot(
-            comp_velocity, comp_density, color=ACCENT_2, linewidth=2.0, label="理论高斯"
+            comp_velocity, comp_density, color=ACCENT_2, linewidth=2.0, label="水平速度分量理论高斯分布"
         )
-        self.ax_component.set_xlabel(r"水平分量 $v_x$ / (m·s$^{-1}$)")
-        self.ax_component.set_ylabel("概率密度 f(v_x)")
-        self.ax_component.set_title("水平速度分量分布")
+        self.ax_component.set_xlabel(r"水平速度分量 $v_x$ / (m·s$^{-1}$)")
+        self.ax_component.set_ylabel("水平分量概率密度 f(v_x)")
+        self.ax_component.set_title("水平速度分量概率密度")
 
         # ---- 控制面板 ----
-        panel = ControlPanel("麦克斯韦速率分布", lead="对照速率 f(v) 与水平速度分量 v_x 的理论分布与样本。")
+        panel = ControlPanel("麦克斯韦速率分布", lead="对照气体分子速率概率密度与水平速度分量的理论概率密度和样本。")
         self.temperature = LabeledSlider(
-            "温度 T", 0, 100, 20, formatter=lambda v: f"{v:.0f} °C"
+            "温度", 0, 100, 20, formatter=lambda v: f"{v:.0f} °C"
         )
         self.temperature.valueChanged.connect(self._temperature_changed)
         panel.add(self.temperature)
@@ -102,7 +102,7 @@ class MaxwellTab(QWidget):
         sweep_layout.addWidget(self.sweep_button)
         panel.add(sweep_container)
 
-        self.metrics = MetricGrid("最概然", "平均", "均方根")
+        self.metrics = MetricGrid("最概然速率", "平均速率", "均方根速率")
         panel.add(self.metrics)
 
         self.pause_button = QPushButton("暂停")
@@ -116,7 +116,7 @@ class MaxwellTab(QWidget):
 
         self.workbench = WorkbenchPanel(
             panel, "固定体积中的分子运动", self.scene_canvas,
-            "速率 f(v) 与水平分量 v_x 分布", self.chart_canvas,
+            "气体分子速率概率密度与水平速度分量概率密度", self.chart_canvas,
         )
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -219,16 +219,16 @@ class MaxwellTab(QWidget):
             density=True,
             alpha=0.28,
             color=ACCENT,
-            label="v_x 样本",
+            label="水平速度分量样本",
         )
         self.ax_component.relim()
         self.ax_component.autoscale_view()
         style_legend(self.ax_component.legend(loc="upper right"))
 
-        self.ax_box.set_title(f"固定体积内分子运动｜T={self.model.state.temperature_c:.0f} °C")
+        self.ax_box.set_title(f"固定体积内分子运动｜温度={self.model.state.temperature_c:.0f} °C")
         self.metrics.set_values({
-            "最概然": f"{self.model.most_probable_speed:.1f} m/s",
-            "平均": f"{self.model.mean_speed:.1f} m/s",
-            "均方根": f"{self.model.rms_speed:.1f} m/s",
+            "最概然速率": f"{self.model.most_probable_speed:.1f} m/s",
+            "平均速率": f"{self.model.mean_speed:.1f} m/s",
+            "均方根速率": f"{self.model.rms_speed:.1f} m/s",
         })
         self.chart_canvas.draw_idle()

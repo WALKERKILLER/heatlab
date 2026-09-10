@@ -1,4 +1,4 @@
-"""Shared Qt and Matplotlib widgets (VS Code Dark+ workbench chrome)."""
+"""Shared Qt and Matplotlib widgets for the Simulation-style workbench."""
 
 from __future__ import annotations
 
@@ -77,14 +77,14 @@ mpl.rcParams["font.sans-serif"] = [
 ]
 mpl.rcParams["axes.unicode_minus"] = False
 
-# VS Code Dark+ 表面色
-BG = "#1e1e1e"
-PANEL = "#252526"
-GRID = "#3e3e42"
-TEXT = "#cccccc"
-MUTED = "#9d9d9d"
-ACCENT = "#3794ff"
-ACCENT_2 = "#dcdcaa"
+# Simulation 黑色实验台表面色
+BG = "#080808"
+PANEL = "#171717"
+GRID = "#333333"
+TEXT = "#E5E5E5"
+MUTED = "#AAAAAA"
+ACCENT = "#4FA3D9"
+ACCENT_2 = "#E3C15A"
 ACCENT_3 = "#c586c0"
 
 # Matplotlib defaults to near-black text; force light copy on the dark canvas so
@@ -272,7 +272,7 @@ class MetricRow(QWidget):
         super().__init__(parent)
         self.key_label = QLabel(key)
         self.key_label.setObjectName("metricKey")
-        self.value_label = QLabel("—")
+        self.value_label = QLabel("暂无")
         self.value_label.setObjectName("metricValue")
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 4, 10, 4)
@@ -302,8 +302,8 @@ class MetricGrid(QFrame):
 
     def set_values(self, values: dict[str, str] | None) -> None:
         for row in self._rows:
-            text = values.get(row.key_label.text()) if values else "—"
-            row.set_value(text if text is not None else "—")
+            text = values.get(row.key_label.text()) if values else "暂无"
+            row.set_value(text if text is not None else "暂无")
 
 
 class PanelCard(QFrame):
@@ -356,7 +356,7 @@ class WorkbenchPanel(QWidget):
 
 
 class TopBar(QWidget):
-    """VS Code 风格顶栏：品牌 + 命令托盘（种子）+ 运行簇（状态与暂停）。"""
+    """Simulation 风格顶栏：品牌 + 命令托盘（种子）+ 运行簇。"""
 
     seedApplied = Signal(int)
     pauseToggled = Signal(bool)
@@ -384,8 +384,8 @@ class TopBar(QWidget):
         mark.setFixedSize(28, 28)
         mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
         mark.setStyleSheet(
-            "background:#2a2a2e;color:#ff9f43;border:1px solid rgba(255,107,61,80%);"
-            "border-radius:8px;font-size:14px;font-weight:700;"
+            "background:#171717;color:#E3C15A;border:1px solid #333333;"
+            "border-radius:3px;font-size:14px;font-weight:700;"
         )
 
         copy = QWidget()

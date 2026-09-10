@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="HeatLab 热学科学计算实时实验台：理想气体、布朗运动、麦克斯韦分布与伽尔顿板。" />
-  <title>HeatLab — Live Workbench</title>
+  <title>{{ page_title }}</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
@@ -12,9 +12,9 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <link rel="stylesheet" href="/static/app.css" />
 </head>
-<body data-default-seed="{{ default_seed }}">
+<body data-default-seed="{{ default_seed }}" data-default-topic="{{ default_topic }}" data-standalone="{{ 'true' if standalone else 'false' }}" data-has-overview="{{ 'true' if has_overview else 'false' }}">
 {% raw %}
-  <div id="app">
+  <div id="app" :class="{ 'is-standalone': standalone }">
     <a class="skip-link" href="#main-workbench">跳到主工作区</a>
     <header class="topbar" role="banner">
       <div class="topbar-left">
@@ -43,6 +43,14 @@
       </div>
 
       <div class="topbar-right">
+        <a v-if="standalone && hasOverview" class="standalone-mode" href="/" aria-label="回到四专题总览">
+          <span class="standalone-mode-label">单专题</span>
+          <span class="standalone-mode-topic">{{ currentMeta.label }}</span>
+        </a>
+        <div v-else-if="standalone" class="standalone-mode" aria-label="单专题启动模式">
+          <span class="standalone-mode-label">单专题启动</span>
+          <span class="standalone-mode-topic">{{ currentMeta.label }}</span>
+        </div>
         <div class="command-tray" role="group" aria-labelledby="seed-label">
           <div class="seed-field">
             <label class="field-label" id="seed-label" for="seed-input">
@@ -127,7 +135,7 @@
       </div>
     </header>
 
-    <div class="tabs" role="tablist" aria-label="实验专题">
+    <div v-if="!standalone" class="tabs" role="tablist" aria-label="实验专题">
       <button
         v-for="item in topics"
         :key="item.id"
@@ -148,138 +156,184 @@
       </button>
     </div>
 
-    <main id="main-workbench" class="layout" :class="{ 'layout-plot-wide': topic === 'maxwell' || topic === 'ideal-gas' || topic === 'brownian' || topic === 'galton' }" role="main" tabindex="-1">
+    <main id="main-workbench" class="layout" :class="{ 'layout-plot-wide': topic === 'maxwell' || topic === 'ideal-gas' || topic === 'brownian' || topic === 'galton', 'layout-ideal': topic === 'ideal-gas' }" role="main" tabindex="-1">
       <aside class="panel" aria-labelledby="params-heading">
         <div class="panel-head">
           <div class="panel-kicker">参数</div>
-          <h2 id="params-heading">{{ currentMeta.label }}</h2>
+          <div class="panel-title-row">
+            <h2 id="params-heading">{{ currentMeta.label }}</h2>
+            <a v-if="!standalone" class="panel-open-link" :href="'/topic/' + topic">独立打开</a>
+          </div>
           <p class="panel-lead">{{ currentMeta.lead }}</p>
         </div>
         <div class="panel-body">
         <template v-if="topic === 'ideal-gas'">
-          <div class="control-block">
-            <div class="control-row">
-              <label>过程模式</label>
-              <strong v-if="ideal.data">{{ processLabel }}</strong>
+          <section class="control-section" aria-labelledby="ideal-experiment-heading">
+            <div class="control-section-head">
+              <div>
+                <span class="control-section-index">01</span>
+                <strong id="ideal-experiment-heading">选择实验</strong>
+              </div>
+              <span class="equation-chip">PV=nRT</span>
             </div>
-            <div class="process-tabs" role="group" aria-label="准静态过程模式">
+            <div class="experiment-grid" role="group" aria-label="理想气体实验模块">
               <button
-                v-for="mode in processModes"
+                v-for="mode in idealExperiments"
                 :key="mode.id"
                 type="button"
-                class="process-tab"
-                :class="{ active: ideal.process_mode === mode.id }"
-                :aria-pressed="ideal.process_mode === mode.id ? 'true' : 'false'"
-                @click="setIdealProcessMode(mode.id)"
+                class="experiment-tab"
+                :class="{ active: ideal.experiment_mode === mode.id }"
+                :aria-pressed="ideal.experiment_mode === mode.id ? 'true' : 'false'"
+                :title="mode.description"
+                @click="setIdealExperiment(mode.id)"
               >
-                {{ mode.label }}
+                <span>{{ mode.label }}</span>
+                <small>{{ mode.control }}</small>
               </button>
             </div>
-          </div>
-          <div class="control-block">
-            <div class="control-row">
-              <label for="ideal-temp">温度 T</label>
-              <strong id="ideal-temp-value">{{ ideal.temperature_c }} °C</strong>
+            <p class="control-help">{{ idealModeMeta.description }}</p>
+          </section>
+
+          <section class="control-section" aria-labelledby="ideal-adjust-heading">
+            <div class="control-section-head">
+              <div>
+                <span class="control-section-index">02</span>
+                <strong id="ideal-adjust-heading">{{ idealModeMeta.label }}</strong>
+              </div>
+              <span class="control-section-note">{{ idealModeMeta.fixed }}</span>
             </div>
-            <input
-              id="ideal-temp"
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              v-model.number="ideal.temperature_c"
-              @input="onIdealChange"
-              :aria-valuetext="ideal.temperature_c + ' 摄氏度'"
-              aria-describedby="ideal-temp-value"
-            />
-          </div>
-          <div class="control-block">
-            <div class="control-row">
-              <label for="ideal-pressure">压强 P</label>
-              <strong id="ideal-pressure-value">{{ ideal.pressure_atm.toFixed(2) }} atm</strong>
+            <div v-if="ideal.experiment_mode === 'temperature-micro' || ideal.experiment_mode === 'isochoric' || ideal.experiment_mode === 'isobaric'" class="control-block">
+              <div class="control-row">
+                <label for="ideal-temp">温度</label>
+                <strong id="ideal-temp-value">{{ ideal.temperature_c }} °C</strong>
+              </div>
+              <input
+                id="ideal-temp"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                v-model.number="ideal.temperature_c"
+                @input="onIdealChange"
+                :aria-valuetext="ideal.temperature_c + ' 摄氏度'"
+                aria-describedby="ideal-temp-value ideal-temp-help"
+              />
+              <span id="ideal-temp-help" class="control-help">温度必须使用摄氏度输入，模型内部换算为绝对温度。</span>
             </div>
-            <input
-              id="ideal-pressure"
-              type="range"
-              min="1"
-              max="2"
-              step="0.01"
-              v-model.number="ideal.pressure_atm"
-              @input="onIdealChange"
-              :disabled="ideal.process_mode === 'isochoric'"
-              :aria-valuetext="ideal.pressure_atm.toFixed(2) + ' 大气压'"
-              aria-describedby="ideal-pressure-value"
-            />
-          </div>
-          <div class="control-block sweep-block">
-            <div class="control-row">
-              <label>自动步进</label>
-              <strong>{{ sweepTargetLabel }}</strong>
+            <div v-if="ideal.experiment_mode === 'pressure-micro' || ideal.experiment_mode === 'isothermal' || ideal.experiment_mode === 'first-law'" class="control-block">
+              <div class="control-row">
+                <label for="ideal-volume">体积</label>
+                <strong id="ideal-volume-value">{{ idealVolumeFromFactor().toFixed(2) }} L</strong>
+              </div>
+              <input
+                id="ideal-volume"
+                type="range"
+                :min="ideal.experiment_mode === 'first-law' ? 0.2 : 0.5"
+                :max="ideal.experiment_mode === 'first-law' ? 5 : 3"
+                step="0.01"
+                v-model.number="ideal.volume_factor"
+                @input="onIdealChange"
+                :aria-valuetext="idealVolumeFromFactor().toFixed(2) + ' 升'"
+                aria-describedby="ideal-volume-value ideal-volume-help"
+              />
+              <span id="ideal-volume-help" class="control-help">相对初始体积 V₀ 调节；粒子箱只显示相对长度。</span>
             </div>
-            <div class="process-tabs" role="group" aria-label="步进目标变量">
-              <button
-                type="button"
-                class="process-tab"
-                :class="{ active: sweep.target === 'temperature_c' }"
-                @click="setSweepTarget('temperature_c')"
-              >温度</button>
-              <button
-                type="button"
-                class="process-tab"
-                :class="{ active: sweep.target === 'pressure_atm' }"
-                :disabled="ideal.process_mode === 'isochoric'"
-                @click="setSweepTarget('pressure_atm')"
-              >压强</button>
+            <div v-if="ideal.experiment_mode === 'pressure-micro' || ideal.experiment_mode === 'isothermal'" class="readout-strip">
+              <div class="control-row">
+                <span>保持的温度</span>
+                <strong>{{ ideal.temperature_c }} °C</strong>
+              </div>
+              <p class="control-help">只改变体积，温度保持不变；压强由 PV=nRT 得出。</p>
             </div>
-            <div class="process-tabs" role="group" aria-label="步进方向">
-              <button
-                type="button"
-                class="process-tab"
-                :class="{ active: sweep.direction > 0 }"
-                @click="setSweepDirection(1)"
-              >升</button>
-              <button
-                type="button"
-                class="process-tab"
-                :class="{ active: sweep.direction < 0 }"
-                @click="setSweepDirection(-1)"
-              >降</button>
+            <div v-if="ideal.experiment_mode === 'isobaric'" class="readout-strip">
+              <div class="control-row">
+                <span>保持的压强</span>
+                <strong>1.00 atm</strong>
+              </div>
+              <p class="control-help">温度改变时，体积按 V/T 保持等压关系。</p>
             </div>
-            <div class="control-row">
-              <label for="sweep-rate">速率</label>
-              <strong id="sweep-rate-value">{{ sweepRateLabel }}</strong>
+            <div v-if="ideal.experiment_mode === 'temperature-micro' || ideal.experiment_mode === 'isochoric'" class="readout-strip">
+              <div class="control-row">
+                <span>保持的体积</span>
+                <strong>{{ ideal.data ? ideal.data.volume_litre.toFixed(2) : '暂无' }} L</strong>
+              </div>
+              <p class="control-help">只改变温度，压强由 PV=nRT 得出。</p>
             </div>
-            <input
-              id="sweep-rate"
-              type="range"
-              min="1"
-              max="100"
-              step="1"
-              v-model.number="sweep.rate"
-              :aria-valuetext="sweepRateLabel"
-              aria-describedby="sweep-rate-value"
-            />
-            <button type="button" class="btn" :class="sweep.enabled ? 'btn-primary' : ''" @click="toggleSweep">
-              {{ sweep.enabled ? '停止步进' : '开始步进' }}
-            </button>
-          </div>
+            <div v-if="ideal.experiment_mode === 'first-law'" class="readout-strip">
+              <div class="control-row">
+                <span>边界条件</span>
+                <strong>封闭、绝热</strong>
+              </div>
+              <p class="control-help">快速改变体积用于课堂演示；图中的理论曲线是准静态绝热路径。此处温度由绝热关系计算，允许超出其他模块的 0-100 °C 控件范围，但始终保持高于绝对零度。</p>
+            </div>
+            <template v-if="ideal.experiment_mode === 'heat-exchange'">
+              <div class="control-block">
+                <div class="control-row"><label for="heat-left-temp">左室温度</label><strong>{{ ideal.temperature_left_c.toFixed(1) }} °C</strong></div>
+                <input id="heat-left-temp" type="range" min="0" max="100" step="1" v-model.number="ideal.temperature_left_c" @input="onIdealChange" />
+              </div>
+              <div class="control-block">
+                <div class="control-row"><label for="heat-right-temp">右室温度</label><strong>{{ ideal.temperature_right_c.toFixed(1) }} °C</strong></div>
+                <input id="heat-right-temp" type="range" min="0" max="100" step="1" v-model.number="ideal.temperature_right_c" @input="onIdealChange" />
+              </div>
+              <div class="control-row"><span>隔板</span><strong>{{ ideal.barrier === 'conductive' ? '导热' : '绝热' }}</strong></div>
+              <div class="process-tabs" role="group" aria-label="隔板类型">
+                <button type="button" class="process-tab" :class="{ active: ideal.barrier === 'adiabatic' }" @click="setHeatBarrier('adiabatic')">绝热隔板</button>
+                <button type="button" class="process-tab" :class="{ active: ideal.barrier === 'conductive' }" @click="setHeatBarrier('conductive')">导热隔板</button>
+              </div>
+              <p class="control-help">导热时热量从高温室流向低温室；两室等体积、等物质的量，因此最终温度相同。</p>
+            </template>
+            <div v-if="ideal.experiment_mode !== 'heat-exchange'" class="control-block">
+              <div class="control-row"><label for="ideal-demo-count">演示粒子数（N<sub>demo</sub>）</label><strong>{{ ideal.demo_particle_count }}</strong></div>
+              <input id="ideal-demo-count" type="range" min="5" max="100" step="1" v-model.number="ideal.demo_particle_count" @input="onIdealChange" />
+              <span class="control-help">只控制画面采样密度；状态方程中的物质的量（n）不变。</span>
+            </div>
+          </section>
+
+          <section class="control-section" v-if="ideal.data" aria-labelledby="ideal-state-heading">
+            <div class="control-section-head">
+              <div>
+                <span class="control-section-index">03</span>
+                <strong id="ideal-state-heading">观测量</strong>
+              </div>
+              <span class="control-section-note">变量与读数一一对应</span>
+            </div>
+            <div v-if="ideal.experiment_mode !== 'heat-exchange'" class="metrics" role="group" aria-label="热力学当前状态">
+              <div class="metric-item"><span>压强 P</span><strong>{{ ideal.data.pressure_atm.toFixed(3) }} atm</strong></div>
+              <div class="metric-item"><span>体积 V</span><strong>{{ ideal.data.volume_litre.toFixed(2) }} L</strong></div>
+              <div class="metric-item"><span>绝对温度 T</span><strong>{{ ideal.data.temperature_k.toFixed(2) }} K</strong></div>
+              <div v-if="ideal.experiment_mode === 'temperature-micro' || ideal.experiment_mode === 'pressure-micro'" class="metric-item"><span>单分子平均平动动能</span><strong>{{ ideal.data.observables.mean_translational_kinetic_energy_j.toExponential(2) }} J</strong></div>
+              <div v-if="ideal.experiment_mode === 'first-law'" class="metric-item"><span>气体对外做功 W</span><strong>{{ ideal.data.observables.work_by_gas_j.toExponential(2) }} J</strong></div>
+            </div>
+            <div v-else class="metrics" role="group" aria-label="两室热交换读数">
+              <div class="metric-item"><span>左室温度</span><strong>{{ ideal.data.observables.temperature_left_c.toFixed(2) }} °C</strong></div>
+              <div class="metric-item"><span>右室温度</span><strong>{{ ideal.data.observables.temperature_right_c.toFixed(2) }} °C</strong></div>
+              <div class="metric-item"><span>热流率</span><strong>{{ ideal.data.observables.heat_rate_w.toExponential(2) }} W</strong></div>
+              <div class="metric-item"><span>累计传热</span><strong>{{ ideal.data.observables.heat_transferred_j.toExponential(2) }} J</strong></div>
+            </div>
+            <details class="metric-details">
+              <summary>展开物理校验读数</summary>
+              <div v-if="ideal.experiment_mode !== 'heat-exchange'" class="metrics metrics-compact">
+                <div class="metric-item"><span>动量通量估计压强</span><strong>{{ ideal.data.kinetic_pressure_atm.toFixed(3) }} atm</strong></div>
+                <div class="metric-item"><span>平均速率</span><strong>{{ ideal.data.observables.mean_speed_mps.toFixed(1) }} m/s</strong></div>
+                <div class="metric-item"><span>均方根速率</span><strong>{{ ideal.data.observables.rms_speed_mps.toFixed(1) }} m/s</strong></div>
+              </div>
+              <div v-else class="metrics metrics-compact">
+                <div class="metric-item"><span>左室压强</span><strong>{{ ideal.data.observables.pressure_left_atm.toFixed(3) }} atm</strong></div>
+                <div class="metric-item"><span>右室压强</span><strong>{{ ideal.data.observables.pressure_right_atm.toFixed(3) }} atm</strong></div>
+                <div class="metric-item"><span>模拟时间</span><strong>{{ ideal.data.elapsed_s.toFixed(2) }} s</strong></div>
+              </div>
+            </details>
+          </section>
           <div class="physics-note" role="note">
-            <strong>显示边界说明</strong>
-            <span>粒子箱是“相对显示体积”：长度按 T/P 缩放并限制在 0.45–1.60，仅用于视觉呈现；物理体积以右侧 V = nRT/P 读数为准。</span>
-          </div>
-          <div class="metrics" v-if="ideal.data" role="group" aria-label="热力学实时读数">
-            <div class="metric-item"><span>物理体积 V</span><strong>{{ ideal.data.volume_litre.toFixed(4) }} L</strong></div>
-            <div class="metric-item"><span>温度 T</span><strong>{{ ideal.data.temperature_k.toFixed(2) }} K</strong></div>
-            <div class="metric-item"><span>设定 P</span><strong>{{ ideal.data.pressure_atm.toFixed(3) }} atm</strong></div>
-            <div class="metric-item"><span>动能论 P</span><strong>{{ ideal.data.kinetic_pressure_atm.toFixed(3) }} atm</strong></div>
-            <div class="metric-item"><span>状态坐标 (P,V,T)</span><strong>({{ ideal.data.pressure_atm.toFixed(2) }} atm, {{ ideal.data.volume_litre.toFixed(3) }} L, {{ ideal.data.temperature_k.toFixed(2) }} K)</strong></div>
+            <strong>读数说明</strong>
+            <span>{{ idealModeMeta.note }}</span>
           </div>
         </template>
 
         <template v-else-if="topic === 'brownian'">
           <div class="control-block">
             <div class="control-row">
-              <label for="brownian-mass">质量 m/m₀</label>
+              <label for="brownian-mass">花粉粒子相对质量 m/m₀</label>
               <strong id="brownian-mass-value">{{ brownian.mass_ratio.toFixed(2) }}</strong>
             </div>
             <input
@@ -293,6 +347,7 @@
               :aria-valuetext="brownian.mass_ratio.toFixed(2)"
               aria-describedby="brownian-mass-value"
             />
+            <span class="control-help">范围为 0.05-1.00；零质量不定义，因此最低显示为 0.05m₀。更改质量或液体分子数会重新开始轨迹统计。</span>
           </div>
           <div class="control-block">
             <div class="control-row">
@@ -360,18 +415,18 @@
             <button type="button" class="btn" @click="resetBrownian">清空轨迹</button>
           </div>
           <div class="metrics" v-if="brownian.data" role="group" aria-label="布朗运动读数">
-            <div class="metric-item"><span>理论 D</span><strong>{{ brownian.data.theoretical_D.toFixed(4) }}</strong></div>
-            <div class="metric-item"><span>估计 D</span><strong>{{ formatOptional(brownian.data.empirical_D) }}</strong></div>
-            <div class="metric-item"><span>花粉碰撞</span><strong>{{ brownian.data.collision_count }}</strong></div>
-            <div class="metric-item"><span>液体碰撞</span><strong>{{ brownian.data.liquid_collision_count }}</strong></div>
-            <div class="metric-item"><span>时长</span><strong>{{ brownian.data.elapsed.toFixed(2) }}</strong></div>
+            <div class="metric-item"><span>连续介质参考扩散系数 D</span><strong>{{ brownian.data.theoretical_D.toFixed(4) }}</strong></div>
+            <div class="metric-item"><span>轨迹估计扩散系数 D</span><strong>{{ formatOptional(brownian.data.empirical_D) }}</strong></div>
+            <div class="metric-item"><span>花粉碰撞次数</span><strong>{{ brownian.data.collision_count }}</strong></div>
+            <div class="metric-item"><span>液体分子碰撞次数</span><strong>{{ brownian.data.liquid_collision_count }}</strong></div>
+            <div class="metric-item"><span>模拟时间</span><strong>{{ brownian.data.elapsed.toFixed(2) }} s</strong></div>
           </div>
         </template>
 
         <template v-else-if="topic === 'maxwell'">
           <div class="control-block">
             <div class="control-row">
-              <label for="maxwell-temp">温度 T</label>
+              <label for="maxwell-temp">温度</label>
               <strong id="maxwell-temp-value">{{ maxwell.temperature_c }} °C</strong>
             </div>
             <input
@@ -392,7 +447,7 @@
           <div class="control-block sweep-block">
             <div class="control-row">
               <label>自动步进</label>
-              <strong>温度 T</strong>
+              <strong>温度</strong>
             </div>
             <div class="process-tabs" role="group" aria-label="步进方向">
               <button
@@ -427,16 +482,16 @@
             </button>
           </div>
           <div class="metrics" v-if="maxwell.data" role="group" aria-label="麦克斯韦读数">
-            <div class="metric-item"><span>最概然</span><strong>{{ maxwell.data.most_probable_speed.toFixed(1) }} m/s</strong></div>
-            <div class="metric-item"><span>平均</span><strong>{{ maxwell.data.mean_speed.toFixed(1) }} m/s</strong></div>
-            <div class="metric-item"><span>均方根</span><strong>{{ maxwell.data.rms_speed.toFixed(1) }} m/s</strong></div>
+            <div class="metric-item"><span>最概然速率</span><strong>{{ maxwell.data.most_probable_speed.toFixed(1) }} m/s</strong></div>
+            <div class="metric-item"><span>平均速率</span><strong>{{ maxwell.data.mean_speed.toFixed(1) }} m/s</strong></div>
+            <div class="metric-item"><span>均方根速率</span><strong>{{ maxwell.data.rms_speed.toFixed(1) }} m/s</strong></div>
           </div>
         </template>
 
         <template v-else>
           <div class="control-block">
             <div class="control-row">
-              <label for="galton-count">粒子数 N</label>
+              <label for="galton-count">投放粒子数</label>
               <strong id="galton-count-value">{{ galton.particle_count }}</strong>
             </div>
             <input
@@ -455,9 +510,8 @@
           </div>
           <div class="metrics" v-if="galton.data" role="group" aria-label="伽尔顿板读数">
             <div class="metric-item"><span>样本数</span><strong>{{ galton.data.particle_count }}</strong></div>
-            <div class="metric-item"><span>均值</span><strong>{{ galton.data.sample_mean.toFixed(3) }}</strong></div>
-            <div class="metric-item"><span>方差</span><strong>{{ galton.data.sample_variance.toFixed(3) }}</strong></div>
-            <div class="metric-item"><span>层</span><strong>{{ galton.data.row }} / {{ galton.data.rows }}</strong></div>
+            <div class="metric-item"><span>槽位位置均值</span><strong>{{ galton.data.sample_mean.toFixed(3) }}</strong></div>
+            <div class="metric-item"><span>槽位位置方差</span><strong>{{ galton.data.sample_variance.toFixed(3) }}</strong></div>
           </div>
         </template>
 
@@ -480,31 +534,67 @@
         </div>
       </section>
 
-      <section class="stage-card plot-panel" :class="{ 'plot-split': topic === 'maxwell' || topic === 'brownian', 'plot-pvt': topic === 'ideal-gas', 'plot-galton': topic === 'galton' }" aria-labelledby="chart-heading">
+      <section class="stage-card plot-panel" :class="{ 'plot-split': topic === 'maxwell' || topic === 'brownian', 'plot-pvt': topic === 'ideal-gas' && ideal.experiment_mode !== 'heat-exchange', 'plot-galton': topic === 'galton' }" aria-labelledby="chart-heading">
         <div class="card-chrome">
           <h3 class="card-title" id="chart-heading">{{ chartTitle }}</h3>
-          <div class="card-badge" aria-hidden="true">图表</div>
+          <div class="card-badge" aria-hidden="true">{{ topic === 'ideal-gas' ? '状态关系' : '图表' }}</div>
         </div>
-        <div class="chart-host" ref="chartHost">
-          <div
-            ref="phaseHost"
-            v-show="topic === 'ideal-gas'"
-            class="phase-host"
-            role="img"
-            aria-label="P-V-T 相图：三维状态轨迹与 PV=nRT 曲面"
-          ></div>
-          <canvas
-            ref="chartCanvas"
-            v-show="topic !== 'ideal-gas'"
-            role="img"
-            :aria-label="chartTitle + '：当前实验结果图'"
-          ></canvas>
+        <div v-if="topic === 'ideal-gas' && ideal.experiment_mode !== 'heat-exchange'" class="chart-view-tabs" role="tablist" aria-label="理想气体主图选择">
           <button
             type="button"
-            class="chart-zoom-btn"
-            v-if="topic === 'ideal-gas'"
+            class="chart-view-tab"
+            :class="{ active: idealChartView === 'pv' }"
+            role="tab"
+            :aria-selected="idealChartView === 'pv' ? 'true' : 'false'"
+            @click="setIdealChartView('pv')"
+          >{{ ideal.experiment_mode === 'temperature-micro' || ideal.experiment_mode === 'isochoric' ? '压强与绝对温度关系' : ideal.experiment_mode === 'isobaric' ? '体积与绝对温度关系' : '压强与体积状态图' }}</button>
+          <button
+            type="button"
+            class="chart-view-tab"
+            :class="{ active: idealChartView === 'pvt' }"
+            role="tab"
+            :aria-selected="idealChartView === 'pvt' ? 'true' : 'false'"
+            @click="setIdealChartView('pvt')"
+          >三维状态图</button>
+          <span class="chart-view-help">默认图只追踪当前状态与过程轨迹</span>
+        </div>
+        <div v-if="topic === 'ideal-gas' && ideal.experiment_mode !== 'heat-exchange'" class="chart-host ideal-main-chart" ref="chartHost">
+          <div v-show="idealChartView === 'pv'" class="ideal-chart-view">
+            <canvas
+              ref="planarPvCanvas"
+              role="img"
+              :aria-label="chartTitle + '：当前实验关系、理论族与当前状态'"
+            ></canvas>
+            <button
+              type="button"
+              class="chart-zoom-btn"
+              @click="openModal('pv')"
+              aria-label="放大压强与体积状态图"
+              title="放大查看"
+            >
+              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+                <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                  <path d="M6.5 1.5v5h-5" />
+                  <path d="M9.5 14.5v-5h5" />
+                  <path d="M1.5 6.5h5v-5" />
+                  <path d="M14.5 9.5h-5v5" />
+                </g>
+              </svg>
+            </button>
+          </div>
+          <div
+            ref="phaseHost"
+            v-show="idealChartView === 'pvt'"
+            class="phase-host ideal-chart-view"
+            role="img"
+            aria-label="压强、体积、绝对温度三维状态图：状态轨迹与 PV=nRT 曲面"
+          ></div>
+          <button
+            type="button"
+            class="chart-zoom-btn phase-zoom-btn"
+            v-if="idealChartView === 'pvt'"
             @click="openModal('phase')"
-            aria-label="放大 3D 相图"
+            aria-label="放大三维状态图"
             title="放大查看"
           >
             <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
@@ -517,6 +607,13 @@
             </svg>
           </button>
         </div>
+        <div v-else class="chart-host" ref="chartHost">
+          <canvas
+            ref="chartCanvas"
+            role="img"
+            :aria-label="chartTitle + '：当前实验结果图'"
+          ></canvas>
+        </div>
         <div class="chart-host" v-if="topic === 'maxwell' || topic === 'brownian'" ref="componentChartHost">
           <canvas
             ref="componentChartCanvas"
@@ -525,36 +622,18 @@
           ></canvas>
         </div>
 
-        <!-- 热力学平面图：P-V / P-T / V-T（大学物理常用图） -->
-        <div class="planar-panel" v-if="topic === 'ideal-gas'" role="group" aria-label="热力学平面图">
+        <!-- 补充关系图按需展开，避免首次进入时并列展示三张图。 -->
+        <details class="ideal-more-charts" v-if="topic === 'ideal-gas' && ideal.experiment_mode !== 'heat-exchange'" @toggle="onIdealExtraToggle">
+          <summary>补充关系图 <span>压强、绝对温度与体积、绝对温度</span></summary>
+          <div class="planar-panel" role="group" aria-label="热力学补充关系图">
           <div class="planar-card">
-            <div class="planar-title">P-V 图（等温线族）</div>
-            <canvas ref="planarPvCanvas"></canvas>
-            <button
-              type="button"
-              class="chart-zoom-btn"
-              @click="openModal('pv')"
-              aria-label="放大 P-V 图"
-              title="放大查看"
-            >
-              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
-                <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                  <path d="M6.5 1.5v5h-5" />
-                  <path d="M9.5 14.5v-5h5" />
-                  <path d="M1.5 6.5h5v-5" />
-                  <path d="M14.5 9.5h-5v5" />
-                </g>
-              </svg>
-            </button>
-          </div>
-          <div class="planar-card">
-            <div class="planar-title">P-T 图（等容线族）</div>
+            <div class="planar-title">压强 P 与绝对温度 T 图（等容线）</div>
             <canvas ref="planarPtCanvas"></canvas>
             <button
               type="button"
               class="chart-zoom-btn"
               @click="openModal('pt')"
-              aria-label="放大 P-T 图"
+              aria-label="放大压强与绝对温度图"
               title="放大查看"
             >
               <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
@@ -568,13 +647,13 @@
             </button>
           </div>
           <div class="planar-card">
-            <div class="planar-title">V-T 图（等压线族）</div>
+            <div class="planar-title">体积 V 与绝对温度 T 图（等压线）</div>
             <canvas ref="planarVtCanvas"></canvas>
             <button
               type="button"
               class="chart-zoom-btn"
               @click="openModal('vt')"
-              aria-label="放大 V-T 图"
+              aria-label="放大体积与绝对温度图"
               title="放大查看"
             >
               <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
@@ -587,7 +666,8 @@
               </svg>
             </button>
           </div>
-        </div>
+          </div>
+        </details>
       </section>
     </main>
 
@@ -663,12 +743,15 @@
 
   <script>
     const DEFAULT_SEED = Number(document.body.dataset.defaultSeed || "42");
+    const DEFAULT_TOPIC = document.body.dataset.defaultTopic || "ideal-gas";
+    const STANDALONE = document.body.dataset.standalone === "true";
+    const HAS_OVERVIEW = document.body.dataset.hasOverview === "true";
     const { createApp, ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } = Vue;
 
     const CHART_FONT = { family: "'HeatLab CJK', 'Segoe UI', sans-serif" };
     const AXIS = {
       color: "#c6ced8",
-      grid: "rgba(91, 105, 122, 0.58)",
+      grid: "rgba(62, 62, 66, 0.58)",
     };
     const COLORS = {
       blue: "#3794ff",
@@ -678,27 +761,39 @@
       orange: "#ce9178",
       fg: "#e1e7ef",
       strong: "#ffffff",
-      editor: "#171c24",
-      editorAlt: "#222a35",
+      editor: "#080808",
+      editorAlt: "#171717",
     };
 
     createApp({
       setup() {
         const topics = [
-          { id: "ideal-gas", kicker: "01", label: "热力学", desc: "P-V 轨迹", lead: "调 T/P 或切换过程，观察分子运动与 P-V 轨迹；粒子箱是相对显示体积。" },
+          { id: "ideal-gas", kicker: "01", label: "热力学", desc: "七组单变量实验", lead: "每次只调一个核心变量，观察分子热运动、状态关系、热交换和能量账本。" },
           { id: "brownian", kicker: "02", label: "布朗运动", desc: "轨迹与扩散", lead: "液体分子随机撞击花粉粒子，产生布朗运动；可观察轨迹、碰撞与扩散常数。" },
-          { id: "maxwell", kicker: "03", label: "麦克斯韦", desc: "速率与水平分量分布", lead: "对照速率 f(v) 与水平速度分量 v_x 的理论分布与样本。" },
+          { id: "maxwell", kicker: "03", label: "麦克斯韦", desc: "气体分子速率分布", lead: "对照气体分子速率概率密度与水平速度分量的理论概率密度和样本。" },
           { id: "galton", kicker: "04", label: "伽尔顿板", desc: "二项分布", lead: "粒子逐层下落，槽位分布逼近二项分布。" },
         ];
 
         const processModes = [
-          { id: "free", label: "自由" },
-          { id: "isothermal", label: "等温" },
-          { id: "isobaric", label: "等压" },
-          { id: "isochoric", label: "等容" },
+          { id: "free", label: "自由", description: "温度和压强都可调，体积由 PV=nRT 计算。" },
+          { id: "isothermal", label: "等温", description: "保持温度不变，改变压强时观察体积变化。" },
+          { id: "isobaric", label: "等压", description: "保持压强不变，改变温度时观察体积变化。" },
+          { id: "isochoric", label: "等容", description: "保持体积不变，改变温度时观察压强变化。" },
         ];
 
-        const topic = ref("ideal-gas");
+        const idealExperiments = [
+          { id: "temperature-micro", label: "温度的微观意义", control: "调温度 · 看平均平动动能", fixed: "体积保持不变", description: "固定体积，调节温度，观察压强与单分子平均平动动能。", note: "平均平动动能由绝对温度决定；演示粒子数不改变物质的量。" },
+          { id: "pressure-micro", label: "压强的微观意义", control: "调体积 · 看压强", fixed: "温度保持不变", description: "固定温度，调节体积，观察粒子撞击器壁的动量通量与压强。", note: "压强由器壁单位面积单位时间获得的动量决定；画面粒子只是代表样本。" },
+          { id: "isothermal", label: "等温过程", control: "调体积 · 压强乘体积为常量", fixed: "温度保持不变", description: "固定温度缓慢改变体积，观察压强与体积的反比关系。", note: "等温过程满足 PV=nRT；当前模型使用理想气体的准静态理论路径。" },
+          { id: "isochoric", label: "等容过程", control: "调温度 · 压强与绝对温度成正比", fixed: "体积保持不变", description: "固定体积改变温度，观察压强随绝对温度成正比。", note: "等容关系应写成 P/T_K=常量，温度比例必须使用 K 而不是摄氏度。" },
+          { id: "isobaric", label: "等压过程", control: "调温度 · 体积与绝对温度成正比", fixed: "压强为 1 atm", description: "固定压强改变温度，观察体积随绝对温度成正比。", note: "等压关系应写成 V/T_K=常量；体积读数由 PV=nRT 计算。" },
+          { id: "heat-exchange", label: "两室热交换", control: "调两侧初温 · 看温度趋同", fixed: "隔板可切换", description: "两室等体积气体通过导热隔板交换热量，观察温度趋于相同。", note: "导热时只交换内能，不让粒子穿过隔板；绝热时两室温度保持各自初值。" },
+          { id: "first-law", label: "热力学第一定律", control: "调体积 · 看热量与功", fixed: "热量为 0 · 绝热", description: "封闭绝热气体快速改变体积，观察温度、内能与气体对外做功。", note: "采用 δQ=dU+P dV；绝热时热量为 0，因此内能变化加气体对外做功为 0。快速动画不等同于准静态，理论线为近似参照。" },
+        ];
+
+        const topic = ref(DEFAULT_TOPIC);
+        const standalone = ref(STANDALONE);
+        const hasOverview = ref(HAS_OVERVIEW);
         const seed = ref(DEFAULT_SEED);
         const sessionId = ref("");
         // 默认暂停：进入页面不自动播放动画，需手动触发（如点击「继续」/投放粒子）
@@ -728,7 +823,8 @@
         const modalVtCanvas = ref(null);
         const modalOpen = ref(false);
         const modalKind = ref("phase");
-        const modalTitle = ref("P-V-T 相图");
+        const modalTitle = ref("压强与体积状态图（等温线族）");
+        const idealChartView = ref("pv");
         let modalPlotReady = false;
         let modalChart = null;
 
@@ -741,7 +837,8 @@
         let rafId = 0;
         let lastStepAt = 0;
         let chartDirty = true;
-        let pendingParam = null;
+        const pendingParams = new Map();
+        let requestGeneration = 0;
         let idealFrame = 0;
         let brownianFrame = 0;
         // 相图（Plotly 3D + 平面图）渲染节流计数：粒子场景每帧更新，
@@ -751,7 +848,19 @@
         let resizeObserver = null;
         let resizeTimer = null;
 
-        const ideal = reactive({ temperature_c: 20, pressure_atm: 1.0, process_mode: "free", data: null });
+        const ideal = reactive({
+          temperature_c: 20,
+          pressure_atm: 1.0,
+          volume_factor: 1.0,
+          reference_volume_litre: 0.024,
+          process_mode: "isochoric",
+          experiment_mode: "temperature-micro",
+          demo_particle_count: 60,
+          barrier: "adiabatic",
+          temperature_left_c: 80,
+          temperature_right_c: 20,
+          data: null,
+        });
         const brownian = reactive({ mass_ratio: 0.5, molecule_count: 40, show_arrow: true, show_vector: true, trail_fade: false, data: null });
         const maxwell = reactive({ temperature_c: 20, data: null });
         const galton = reactive({ particle_count: 50, data: null });
@@ -772,46 +881,46 @@
               { tag: "温度单位", katex: "T(\\mathrm{K}) = T(^{\\circ}\\mathrm{C}) + 273.15" },
             ],
             description: [
-              "理想气体在封闭空间中做无规则热运动：温度升高、压强变化时体积随之变化，分子热运动加剧，体现温度与压强的微观物理意义。",
-              "场景中的透明粒子箱是按 T/P 缩放的相对显示体积，不代表真实容器的三维绝对尺寸；物理体积以 V=nRT/P 读数为准。",
-              "可切换等温 / 等压 / 等容准静态过程，观察 P-V 轨迹与三维 P-V-T 相图上的 (P, V, T) 坐标值。",
+              "本专题拆成七个单一目标实验：先观察温度、压强的微观意义，再验证等温、等容、等压关系，最后观察两室热交换与热力学第一定律。",
+              "场景中的透明粒子箱是相对显示，不代表真实容器的绝对尺寸；物理体积以 V=nRT/P 读数为准，演示粒子数（N_demo）与物质的量（n）分开。",
+              "第一定律模块采用氮气/双原子理想气体近似（绝热指数 γ=1.4）；快速改变体积用于演示，理论曲线标注为准静态绝热路径。",
             ],
             usage: [
-              "拖动「温度 T（0–100 °C）」与「压强 P（1–2 atm）」滑条观察分子运动与相对显示体积变化。",
-              "在「过程模式」中选择 等温 / 等压 / 等容，相图上叠加理论过程线。",
-              "开启「自动步进」可让温度或压强连续变化，观察准静态过程。",
+              "先选择一个实验模块。每个模块只调一个核心变量，固定量会显示在控制区右侧。",
+              "粒子数滑条只改变画面采样密度；用“展开物理校验读数”查看平均速率、动量通量压强等量。",
+              "两室热交换先选择绝热或导热隔板，再点击顶部“继续”观察温度随时间变化。",
             ],
           },
           "brownian": {
             title: "专题二：布朗运动与扩散常数",
             formulas: [
-              { tag: "扩散常数（二维）", katex: "D = \\frac{\\theta}{\\gamma}" },
+              { tag: "连续介质参考扩散系数 D（二维）", katex: "D = \\frac{\\theta}{\\gamma}" },
               { tag: "均方位移", katex: "\\langle r^2 \\rangle = 4Dt" },
             ],
             description: [
               "大量液体分子不断撞击花粉粒子，使其产生无规则布朗运动；粒子轨迹与扩散常数反映液体分子热运动的统计规律。",
-              "液体分子之间发生弹性碰撞，密度越高、颗粒越大，花粉受到的随机冲击越多。",
+              "场景中的液体分子受 Ornstein-Uhlenbeck（OU）热浴过程驱动，彼此发生硬球弹性碰撞，并在真实接触时与花粉交换动量；单个远离花粉的分子不会产生非局部随机力。",
             ],
             usage: [
-              "拖动「花粉粒子质量 m/m₀（0–1）」观察重颗粒运动更缓慢。",
-              "调节「液体分子数 n（1–100）」观察液体密度与碰撞频率。",
+              "拖动「花粉粒子相对质量 m/m₀（0.05-1.00）」观察重颗粒运动更缓慢；零质量不定义，因此最低端点为 0.05m₀。",
+              "调节「液体分子数（1-100）」观察液体密度与碰撞频率。",
               "可用开关显示/隐藏 轨迹方向箭头、液体速度矢量、轨迹渐隐；「清空轨迹」重置。",
             ],
           },
           "maxwell": {
             title: "专题三：气体分子速率分布（麦克斯韦）",
             formulas: [
-              { tag: "速率分布", katex: "f(v) = 4\\pi\\left(\\frac{m}{2\\pi kT}\\right)^{3/2} e^{-\\frac{mv^2}{2kT}} v^2" },
-              { tag: "水平分量", katex: "f(v_x) = \\sqrt{\\frac{m}{2\\pi kT}}\\, e^{-\\frac{m v_x^2}{2kT}}" },
+              { tag: "气体分子速率概率密度", katex: "f(v) = 4\\pi\\left(\\frac{m}{2\\pi kT}\\right)^{3/2} e^{-\\frac{mv^2}{2kT}} v^2" },
+              { tag: "水平速度分量概率密度", katex: "f(v_x) = \\sqrt{\\frac{m}{2\\pi kT}}\\, e^{-\\frac{m v_x^2}{2kT}}" },
             ],
             description: [
               "体积不变时仅改变温度，大量气体分子的速率分布随之变化；分子速率服从麦克斯韦分布。",
-              "右侧双图对照：速率 f(v) 分布与水平速度分量 v_x 的高斯分布（理论曲线 + 蒙特卡洛样本直方图）。",
+              "右侧双图对照：气体分子速率 v 的分布几率密度 f(v)，以及水平速度分量 v_x 的高斯分布（理论曲线 + 蒙特卡洛样本直方图）。",
             ],
             usage: [
-              "拖动「温度 T（0–100 °C）」观察分布曲线右移、峰值变矮变宽。",
+              "拖动「温度（0-100 °C）」观察分布曲线右移、峰值变矮变宽。",
               "点「重新采样」生成新的随机样本；开启「自动步进」连续扫过温度。",
-              "对照最概然、平均、均方根速率三个读数。",
+              "对照最概然速率、平均速率、均方根速率三个读数。",
             ],
           },
           "galton": {
@@ -825,39 +934,49 @@
               "采用蒙特卡洛模拟算法生成粒子路径，右侧图注对照理论概率。",
             ],
             usage: [
-              "设置「粒子数 N（1–100）」后点「投放粒子」手动开始下落。",
+              "设置「投放粒子数（1-100）」后点「投放粒子」手动开始下落。",
               "观察粒子从漏斗落入钉板、逐钉弹跳并堆积到各狭槽的过程。",
-              "对比槽位概率与二项分布理论曲线、均值与方差读数。",
+              "对比槽位概率与二项分布理论曲线、槽位位置均值与槽位位置方差读数。",
             ],
           },
         };
 
         const currentMeta = computed(() => topics.find((item) => item.id === topic.value) || topics[0]);
+        const idealModeMeta = computed(() => idealExperiments.find((item) => item.id === ideal.experiment_mode) || idealExperiments[0]);
         const processLabel = computed(() => {
           const mode = processModes.find((item) => item.id === ideal.process_mode) || processModes[0];
           return mode.label;
         });
-        const sweepTargetLabel = computed(() => (sweep.target === "temperature_c" ? "温度 T" : "压强 P"));
+        const processDescription = computed(() => {
+          const mode = processModes.find((item) => item.id === ideal.process_mode) || processModes[0];
+          return mode.description;
+        });
+        const sweepTargetLabel = computed(() => (sweep.target === "temperature_c" ? "温度" : "压强"));
         const sweepRateLabel = computed(() => {
           if (sweep.target === "temperature_c") return (sweep.rate * 0.1).toFixed(1) + " °C/s";
           return (sweep.rate * 0.001).toFixed(3) + " atm/s";
         });
         const maxwellSweepRateLabel = computed(() => (maxwellSweep.rate * 0.1).toFixed(1) + " °C/s");
         const sceneTitle = computed(() => {
-          if (topic.value === "ideal-gas") return "分子无规则热运动";
+          if (topic.value === "ideal-gas") return ideal.experiment_mode === "heat-exchange" ? "两室气体热交换" : "分子无规则热运动";
           if (topic.value === "brownian") return "花粉粒子运动轨迹";
           if (topic.value === "maxwell") return "固定体积中的分子运动";
           return "伽尔顿板下落";
         });
         const chartTitle = computed(() => {
-          if (topic.value === "ideal-gas") return "P-V-T 相图";
-          if (topic.value === "brownian") return "均方位移 MSD";
-          if (topic.value === "maxwell") return "速率 f(v) 与水平分量 v_x 分布";
+          if (topic.value === "ideal-gas") {
+            if (ideal.experiment_mode === "heat-exchange") return "两室温度随时间变化";
+            if (ideal.experiment_mode === "temperature-micro" || ideal.experiment_mode === "isochoric") return "压强与绝对温度关系";
+            if (ideal.experiment_mode === "isobaric") return "体积与绝对温度关系";
+            return idealChartView.value === "pvt" ? "压强、体积、绝对温度三维状态图" : "压强与体积状态图";
+          }
+          if (topic.value === "brownian") return "均方位移（MSD）";
+          if (topic.value === "maxwell") return "气体分子速率概率密度与水平速度分量概率密度";
           return "槽位概率分布";
         });
         const componentChartTitle = computed(() => {
-          if (topic.value === "brownian") return "液体分子速率分布（2-D 麦克斯韦）";
-          return "水平速度分量 v_x 分布";
+          if (topic.value === "brownian") return "液体分子速率分布（二维麦克斯韦分布）";
+          return "水平速度分量概率密度";
         });
         const statusClass = computed(() => {
           if (error.value) return "error";
@@ -876,10 +995,11 @@
         );
 
         function formatOptional(value) {
-          return value == null || Number.isNaN(value) ? "—" : Number(value).toFixed(4);
+          return value == null || Number.isNaN(value) ? "暂无" : Number(value).toFixed(4);
         }
 
         async function postJson(url, body = {}) {
+          const generation = requestGeneration;
           const response = await fetch(url, {
             method: "POST",
             headers: {
@@ -890,7 +1010,7 @@
           });
           if (!response.ok) throw new Error(`无法连接实验服务（HTTP ${response.status}）。请检查服务是否在运行，然后重试。`);
           const payload = await response.json();
-          if (payload.session_id) sessionId.value = payload.session_id;
+          if (payload.session_id && generation === requestGeneration) sessionId.value = payload.session_id;
           return payload;
         }
 
@@ -1116,12 +1236,98 @@
           ctx.restore();
         }
 
+        function drawHeatExchange(data) {
+          const scene = clearScene();
+          if (!scene) return;
+          const { ctx, width, height } = scene;
+          const pad = 30;
+          const boxX = pad;
+          const boxY = pad + 12;
+          const boxW = width - 2 * pad;
+          const boxH = height - 2 * pad - 12;
+          const map = (point) => ({
+            x: boxX + point[0] * boxW,
+            y: boxY + (1 - point[1]) * boxH,
+          });
+          const leftTemp = data.observables?.temperature_left_c ?? 80;
+          const rightTemp = data.observables?.temperature_right_c ?? 20;
+          const chamberColor = (temperature, alpha = 0.12) => {
+            const ratio = Math.max(0, Math.min(1, temperature / 100));
+            const r = Math.round(62 + 188 * ratio);
+            const g = Math.round(150 - 55 * ratio);
+            const b = Math.round(245 - 150 * ratio);
+            return `rgba(${r},${g},${b},${alpha})`;
+          };
+          ctx.fillStyle = chamberColor(leftTemp);
+          ctx.fillRect(boxX, boxY, boxW / 2, boxH);
+          ctx.fillStyle = chamberColor(rightTemp);
+          ctx.fillRect(boxX + boxW / 2, boxY, boxW / 2, boxH);
+          ctx.strokeStyle = "#59616b";
+          ctx.lineWidth = 1.2;
+          ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1);
+          ctx.beginPath();
+          ctx.moveTo(boxX + boxW / 2, boxY);
+          ctx.lineTo(boxX + boxW / 2, boxY + boxH);
+          ctx.strokeStyle = data.barrier === "conductive" ? COLORS.orange : "#89929e";
+          ctx.setLineDash(data.barrier === "conductive" ? [] : [5, 5]);
+          ctx.lineWidth = data.barrier === "conductive" ? 3 : 2;
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          const drawChamberParticles = (points, temperature) => {
+            const color = chamberColor(temperature, 0.92);
+            for (const point of points || []) {
+              const mapped = map(point);
+              ctx.beginPath();
+              ctx.fillStyle = color;
+              ctx.arc(mapped.x, mapped.y, 3.2, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          };
+          drawChamberParticles(data.chambers?.left?.positions, leftTemp);
+          drawChamberParticles(data.chambers?.right?.positions, rightTemp);
+          ctx.fillStyle = "#f0f2f4";
+          ctx.font = "600 13px 'HeatLab CJK', 'Segoe UI', sans-serif";
+          ctx.fillText(`左室  ${leftTemp.toFixed(1)} °C`, boxX + 12, boxY - 10);
+          ctx.textAlign = "right";
+          ctx.fillText(`右室  ${rightTemp.toFixed(1)} °C`, boxX + boxW - 12, boxY - 10);
+          ctx.textAlign = "left";
+          ctx.fillStyle = data.barrier === "conductive" ? "#ffd1a8" : "#d7dce4";
+          ctx.font = "12px 'HeatLab CJK', 'Segoe UI', sans-serif";
+          ctx.fillText(data.barrier === "conductive" ? "导热隔板 · 热量从高温侧流向低温侧" : "绝热隔板 · 两室不交换热量", boxX + 12, boxY + boxH + 22);
+        }
+
         // P-V-T 相图：使用 Plotly 3D（PV=nRT 曲面 + 轨迹 + 悬停坐标）
         let phasePlotReady = false;
         let phaseSignature = "";
 
         // 3D 相图：保留用户旋转/缩放视角，不被每帧重绘重置
         let phaseCamera = { eye: { x: 1.8, y: 1.8, z: 0.75 }, up: { x: 0, y: 0, z: 1 }, center: { x: 0, y: 0, z: 0 } };
+
+        function phaseAxisRange(data, index, fallback, minimumSpan) {
+          const history = data?.phase_history || [];
+          const process = data?.process_line_3d?.points || [];
+          const surfaceValues = data?.pvt_surface
+            ? [data.pvt_surface.x, data.pvt_surface.y, data.pvt_surface.z][index] || []
+            : [];
+          const values = [...history, ...process].map((point) => point[index])
+            .concat(surfaceValues.flat(Infinity))
+            .filter((value) => Number.isFinite(value));
+          if (!values.length) return fallback;
+          const minimum = Math.min(...values);
+          const maximum = Math.max(...values);
+          const span = Math.max(maximum - minimum, minimumSpan);
+          const padding = span * 0.08;
+          return [minimum - padding, maximum + padding];
+        }
+
+        function phaseRanges(data) {
+          return {
+            pressure: phaseAxisRange(data, 0, [0.9, 2.1], 0.2),
+            volume: phaseAxisRange(data, 1, [0.01, 0.05], 0.01),
+            temperature: phaseAxisRange(data, 2, [270, 380], 10),
+          };
+        }
 
         function renderPhasePlotly(data) {
           const host = phaseHost.value;
@@ -1147,6 +1353,7 @@
             showbackground: true,
             backgroundcolor: COLORS.editor,
           };
+          const ranges = phaseRanges(data);
           const layout = {
             paper_bgcolor: COLORS.editor,
             plot_bgcolor: COLORS.editor,
@@ -1160,9 +1367,9 @@
               font: { color: COLORS.fg, size: 12 },
             },
             scene: {
-              xaxis: { title: "P / atm", ...axis, range: [0.9, 2.1] },
-              yaxis: { title: "V / L", ...axis },
-              zaxis: { title: "T / K", ...axis, range: [270, 380] },
+              xaxis: { title: "压强 P / atm", ...axis, range: ranges.pressure },
+              yaxis: { title: "体积 V / L", ...axis, range: ranges.volume },
+              zaxis: { title: "绝对温度 T / K", ...axis, range: ranges.temperature },
               camera: phaseCamera,
               aspectmode: "manual",
               aspectratio: { x: 1.15, y: 1, z: 1.05 },
@@ -1186,15 +1393,11 @@
               x: surface.x,
               y: surface.y,
               z: surface.z,
-              opacity: 0.14,
+              opacity: 0.10,
               showscale: false,
-              contours: {
-                x: { show: true, color: "#3e6a9e", width: 1 },
-                y: { show: true, color: "#3e6a9e", width: 1 },
-                z: { show: true, color: "#3e6a9e", width: 1 },
-              },
+              contours: { x: { show: false }, y: { show: false }, z: { show: false } },
               colorscale: [[0, "#16324f"], [0.5, "#2f6db3"], [1, "#5aa8e8"]],
-              hovertemplate: "P=%{x:.2f} atm<br>V=%{y:.3f} L<br>T=%{z:.2f} K<extra>PV=nRT</extra>",
+              hovertemplate: "压强 P=%{x:.2f} atm<br>体积 V=%{y:.3f} L<br>绝对温度 T=%{z:.2f} K<extra>PV=nRT</extra>",
             });
           }
 
@@ -1208,7 +1411,7 @@
               y: history.map((p) => p[1]),
               z: history.map((p) => p[2]),
               line: { color: COLORS.yellow, width: 2.5 },
-              hovertemplate: "P=%{x:.2f} atm<br>V=%{y:.3f} L<br>T=%{z:.2f} K<extra>设定路径</extra>",
+              hovertemplate: "压强 P=%{x:.2f} atm<br>体积 V=%{y:.3f} L<br>绝对温度 T=%{z:.2f} K<extra>设定路径</extra>",
             });
           }
 
@@ -1222,7 +1425,7 @@
               y: processPoints.map((p) => p[1]),
               z: processPoints.map((p) => p[2]),
               line: { color: "#ff9f43", width: 4, dash: "dash" },
-              hovertemplate: "P=%{x:.2f} atm<br>V=%{y:.3f} L<br>T=%{z:.2f} K<extra>理论过程线</extra>",
+              hovertemplate: "压强 P=%{x:.2f} atm<br>体积 V=%{y:.3f} L<br>绝对温度 T=%{z:.2f} K<extra>理论过程线</extra>",
             });
           }
 
@@ -1240,7 +1443,7 @@
                 size: 5,
                 line: { color: "#ffffff", width: 1 },
               },
-              hovertemplate: `当前状态<br>(P, V, T) = (${statePoint[0][0].toFixed(2)} atm, ${statePoint[0][1].toFixed(3)} L, ${statePoint[0][2].toFixed(2)} K)<extra></extra>`,
+              hovertemplate: `当前状态<br>(压强 P，体积 V，绝对温度 T) = (${statePoint[0][0].toFixed(2)} atm，${statePoint[0][1].toFixed(3)} L，${statePoint[0][2].toFixed(2)} K)<extra></extra>`,
             });
           }
 
@@ -1263,6 +1466,14 @@
           }
         }
 
+        function destroyPhasePlot() {
+          if (phaseHost.value && phasePlotReady && typeof Plotly !== "undefined") {
+            Plotly.purge(phaseHost.value);
+          }
+          phasePlotReady = false;
+          phaseSignature = "";
+        }
+
         // 热力学平面图：P-V（等温线族）、P-T（等容线族）、V-T（等压线族）
         function destroyPlanarCharts() {
           for (const instance of [planarPvChart, planarPtChart, planarVtChart]) {
@@ -1276,10 +1487,10 @@
 
         // ---- 放大弹窗 ----
         const MODAL_TITLES = {
-          phase: "P-V-T 相图",
-          pv: "P-V 图（等温线族）",
-          pt: "P-T 图（等容线族）",
-          vt: "V-T 图（等压线族）",
+          phase: "压强、体积、绝对温度三维状态图",
+          pv: "压强与体积状态图（等温线族）",
+          pt: "压强与绝对温度图（等容线族）",
+          vt: "体积与绝对温度图（等压线族）",
         };
 
         function openModal(kind) {
@@ -1308,7 +1519,7 @@
             const host = modalPhaseHost.value;
             if (!host) return;
             const traces = buildPhaseTraces(data);
-            const layout = buildPhaseLayout();
+            const layout = buildPhaseLayout(data);
             layout.autosize = true;
             const config = {
               displayModeBar: true,
@@ -1364,9 +1575,9 @@
               borderWidth: 1,
             });
             const scales = {
-              pv: { x: axisScale("P / atm"), y: axisScale("V / L") },
-              pt: { x: axisScale("T / K"), y: axisScale("P / atm") },
-              vt: { x: axisScale("T / K"), y: axisScale("V / L") },
+              pv: { x: axisScale("压强 P / atm"), y: axisScale("体积 V / L") },
+              pt: { x: axisScale("绝对温度 T / K"), y: axisScale("压强 P / atm") },
+              vt: { x: axisScale("绝对温度 T / K"), y: axisScale("体积 V / L") },
             };
             if (modalChart) {
               modalChart.data.datasets = datasets;
@@ -1403,7 +1614,7 @@
                 z: { show: true, color: "#3e6a9e", width: 1 },
               },
               colorscale: [[0, "#16324f"], [0.5, "#2f6db3"], [1, "#5aa8e8"]],
-              hovertemplate: "P=%{x:.2f} atm<br>V=%{y:.3f} L<br>T=%{z:.2f} K<extra>PV=nRT</extra>",
+              hovertemplate: "压强 P=%{x:.2f} atm<br>体积 V=%{y:.3f} L<br>绝对温度 T=%{z:.2f} K<extra>PV=nRT</extra>",
             });
           }
           if (history.length > 1) {
@@ -1415,7 +1626,7 @@
               y: history.map((p) => p[1]),
               z: history.map((p) => p[2]),
               line: { color: COLORS.yellow, width: 2.5 },
-              hovertemplate: "P=%{x:.2f} atm<br>V=%{y:.3f} L<br>T=%{z:.2f} K<extra>设定路径</extra>",
+              hovertemplate: "压强 P=%{x:.2f} atm<br>体积 V=%{y:.3f} L<br>绝对温度 T=%{z:.2f} K<extra>设定路径</extra>",
             });
           }
           if (processPoints.length > 1) {
@@ -1427,7 +1638,7 @@
               y: processPoints.map((p) => p[1]),
               z: processPoints.map((p) => p[2]),
               line: { color: "#ff9f43", width: 4, dash: "dash" },
-              hovertemplate: "P=%{x:.2f} atm<br>V=%{y:.3f} L<br>T=%{z:.2f} K<extra>理论过程线</extra>",
+              hovertemplate: "压强 P=%{x:.2f} atm<br>体积 V=%{y:.3f} L<br>绝对温度 T=%{z:.2f} K<extra>理论过程线</extra>",
             });
           }
           if (statePoint.length) {
@@ -1439,19 +1650,20 @@
               y: statePoint.map((p) => p[1]),
               z: statePoint.map((p) => p[2]),
               marker: { color: COLORS.blue, size: 5, line: { color: "#ffffff", width: 1 } },
-              hovertemplate: `当前状态<br>(P, V, T) = (${statePoint[0][0].toFixed(2)} atm, ${statePoint[0][1].toFixed(3)} L, ${statePoint[0][2].toFixed(2)} K)<extra></extra>`,
+              hovertemplate: `当前状态<br>(压强 P，体积 V，绝对温度 T) = (${statePoint[0][0].toFixed(2)} atm，${statePoint[0][1].toFixed(3)} L，${statePoint[0][2].toFixed(2)} K)<extra></extra>`,
             });
           }
           return traces;
         }
 
-        function buildPhaseLayout() {
+        function buildPhaseLayout(data = ideal.data) {
           const axis = {
             color: AXIS.color,
             gridcolor: AXIS.grid,
             showbackground: true,
             backgroundcolor: COLORS.editor,
           };
+          const ranges = phaseRanges(data);
           return {
             paper_bgcolor: COLORS.editor,
             plot_bgcolor: COLORS.editor,
@@ -1465,9 +1677,9 @@
               font: { color: COLORS.fg, size: 12 },
             },
             scene: {
-              xaxis: { title: "P / atm", ...axis, range: [0.9, 2.1] },
-              yaxis: { title: "V / L", ...axis },
-              zaxis: { title: "T / K", ...axis, range: [270, 380] },
+              xaxis: { title: "压强 P / atm", ...axis, range: ranges.pressure },
+              yaxis: { title: "体积 V / L", ...axis, range: ranges.volume },
+              zaxis: { title: "绝对温度 T / K", ...axis, range: ranges.temperature },
               camera: phaseCamera,
               aspectmode: "manual",
               aspectratio: { x: 1.15, y: 1, z: 1.05 },
@@ -1500,6 +1712,7 @@
           // 等值线族仅在 T/P/V 变化时重建；状态点/过程线每帧轻量更新
           const signature = [
             data.process_mode,
+            data.chart?.kind,
             data.temperature_c.toFixed(0),
             data.pressure_atm.toFixed(2),
             data.volume_litre.toFixed(4),
@@ -1512,25 +1725,35 @@
             ? { p: last[0], v: last[1], t: last[2] }
             : { p: data.pressure_atm, v: data.volume_litre, t: data.temperature_k };
 
-          // 当前过程线（P-V 平面）
+          const primaryKind = data.chart?.kind === "p-t" ? "pt" : data.chart?.kind === "v-t" ? "vt" : "pv";
           const processLine = (data.process_line && data.process_line.points) || [];
+          const historyLine = history.map((point) => primaryKind === "pt"
+            ? { x: point[2], y: point[0] }
+            : primaryKind === "vt"
+              ? { x: point[2], y: point[1] }
+              : { x: point[0], y: point[1] });
 
           if (rebuild) {
-            // P-V 图：等温线族 + 当前过程线 + 状态点
-            const pvDatasets = planar.pv.map((family, i) => ({
+            // 主图随实验切换：P-V、P-T、V-T 只保留当前实验需要的关系。
+            const primaryFamilies = primaryKind === "pt" ? planar.pt : primaryKind === "vt" ? planar.vt : planar.pv;
+            const primaryDatasets = primaryFamilies.map((family, i) => ({
               type: "line",
-              label: `等温 ${(family.T - 273.15).toFixed(0)} °C`,
-              data: buildPlanarDataset(family, "pv"),
+              label: primaryKind === "pv"
+                ? `等温 ${(family.T - 273.15).toFixed(0)} °C`
+                : primaryKind === "pt"
+                  ? `等容 V=${family.V.toFixed(2)} L`
+                  : `等压 P=${family.P.toFixed(2)} atm`,
+              data: buildPlanarDataset(family, primaryKind),
               borderColor: palette[i % palette.length],
               borderWidth: 1.2,
               pointRadius: 0,
               tension: 0,
             }));
-            if (processLine.length > 1) {
-              pvDatasets.push({
+            if ((primaryKind === "pv" ? processLine : historyLine).length > 1) {
+              primaryDatasets.push({
                 type: "line",
                 label: "当前过程",
-                data: processLine.map((pt) => ({ x: pt[0], y: pt[1] })),
+                data: primaryKind === "pv" ? processLine.map((pt) => ({ x: pt[0], y: pt[1] })) : historyLine,
                 borderColor: "#ff9f43",
                 borderWidth: 2,
                 borderDash: [6, 4],
@@ -1538,10 +1761,12 @@
                 tension: 0,
               });
             }
-            pvDatasets.push({
+            primaryDatasets.push({
               type: "scatter",
               label: "当前状态",
-              data: [{ x: currentPt.p, y: currentPt.v }],
+              data: [primaryKind === "pt" ? { x: currentPt.t, y: currentPt.p }
+                : primaryKind === "vt" ? { x: currentPt.t, y: currentPt.v }
+                : { x: currentPt.p, y: currentPt.v }],
               pointRadius: 4,
               backgroundColor: COLORS.blue,
               borderColor: COLORS.strong,
@@ -1550,11 +1775,14 @@
             if (planarPvChart) planarPvChart.destroy();
             planarPvChart = createChartOn(planarPvCanvas, {
               type: "scatter",
-              data: { datasets: pvDatasets },
+              data: { datasets: primaryDatasets },
               options: {
-                scales: { x: axisScale("P / atm"), y: axisScale("V / L") },
+                scales: {
+                  x: axisScale(primaryKind === "pv" ? "压强 P / atm" : "绝对温度 T / K"),
+                  y: axisScale(primaryKind === "pv" ? "体积 V / L" : primaryKind === "pt" ? "压强 P / atm" : "体积 V / L"),
+                },
               },
-            }, "planar-pv");
+            }, "planar-primary-" + primaryKind);
 
             // P-T 图：等容线族 + 状态点
             const ptDatasets = planar.pt.map((family, i) => ({
@@ -1580,7 +1808,7 @@
               type: "scatter",
               data: { datasets: ptDatasets },
               options: {
-                scales: { x: axisScale("T / K"), y: axisScale("P / atm") },
+                scales: { x: axisScale("绝对温度 T / K"), y: axisScale("压强 P / atm") },
               },
             }, "planar-pt");
 
@@ -1608,14 +1836,16 @@
               type: "scatter",
               data: { datasets: vtDatasets },
               options: {
-                scales: { x: axisScale("T / K"), y: axisScale("V / L") },
+                scales: { x: axisScale("绝对温度 T / K"), y: axisScale("体积 V / L") },
               },
             }, "planar-vt");
           } else {
             // 轻量更新：只挪动状态点
             if (planarPvChart && planarPvChart.data.datasets.length) {
               const ds = planarPvChart.data.datasets;
-              ds[ds.length - 1].data = [{ x: currentPt.p, y: currentPt.v }];
+              ds[ds.length - 1].data = [primaryKind === "pt" ? { x: currentPt.t, y: currentPt.p }
+                : primaryKind === "vt" ? { x: currentPt.t, y: currentPt.v }
+                : { x: currentPt.p, y: currentPt.v }];
               planarPvChart.update("none");
             }
             if (planarPtChart && planarPtChart.data.datasets.length) {
@@ -2155,7 +2385,8 @@
 
         function renderScene() {
           if (topic.value === "ideal-gas" && ideal.data) {
-            drawIdealGas3D(ideal.data);
+            if (ideal.experiment_mode === "heat-exchange") drawHeatExchange(ideal.data);
+            else drawIdealGas3D(ideal.data);
           } else if (topic.value === "brownian" && brownian.data) {
             drawBrownian(brownian.data);
           } else if (topic.value === "maxwell" && maxwell.data) {
@@ -2174,7 +2405,7 @@
           const theoryPoints = (data.pdf_v || []).map((v, i) => ({ x: v, y: data.pdf_f[i] }));
           const histPoints = (data.hist_v || []).map((v, i) => ({ x: v, y: data.hist_f[i] }));
           const yMax = data.y_max_fixed || 0.0025;
-          const xMax = (data.pdf_v || [])[0] || 0;
+          const xMax = Math.max(0, ...(data.pdf_v || []));
           const histXMax = Math.max(0, ...(data.hist_v || []));
           const xLimit = Math.max(xMax, histXMax) * 1.05;
 
@@ -2194,7 +2425,7 @@
                     fill: true,
                   },
                   {
-                    label: "理论 PDF",
+                    label: "理论概率密度 f(v)",
                     data: theoryPoints,
                     borderColor: COLORS.yellow,
                     borderWidth: 2,
@@ -2206,7 +2437,7 @@
               options: {
                 scales: {
                   x: { ...axisScale("速率 v / (m·s⁻¹)"), type: "linear", min: 0, max: xLimit },
-                  y: { ...axisScale("f(v)"), min: 0, max: yMax },
+                  y: { ...axisScale("速率概率密度 f(v)"), min: 0, max: yMax },
                 },
               },
             }, "maxwell");
@@ -2219,7 +2450,7 @@
             });
           }
 
-          // 水平速度分量 v_x 高斯分布图（文档要求的"几率~水平速度曲线"）
+          // 水平速度分量 v_x 的几率密度分布（文档要求的“几率~水平速度曲线”）
           const compTheoryPoints = (data.component_pdf_v || []).map((v, i) => ({ x: v, y: data.component_pdf_f[i] }));
           const compHistPoints = (data.component_hist_v || []).map((v, i) => ({ x: v, y: data.component_hist_f[i] }));
           const compYMax = data.component_y_max_fixed || 0.0014;
@@ -2230,7 +2461,7 @@
               data: {
                 datasets: [
                   {
-                    label: "v_x 样本直方图",
+                    label: "水平速度分量样本",
                     data: compHistPoints,
                     stepped: true,
                     borderColor: "rgba(55, 148, 255, 0.85)",
@@ -2240,7 +2471,7 @@
                     fill: true,
                   },
                   {
-                    label: "理论高斯",
+                    label: "水平速度分量理论高斯分布",
                     data: compTheoryPoints,
                     borderColor: COLORS.green,
                     borderWidth: 2,
@@ -2251,8 +2482,8 @@
               },
               options: {
                 scales: {
-                  x: { ...axisScale("水平分量 v_x / (m·s⁻¹)"), type: "linear" },
-                  y: { ...axisScale("f(v_x)"), min: 0, max: compYMax },
+                  x: { ...axisScale("水平速度分量 v_x / (m·s⁻¹)"), type: "linear" },
+                  y: { ...axisScale("水平分量概率密度 f(v_x)"), min: 0, max: compYMax },
                 },
               },
             }, "maxwell-component");
@@ -2289,7 +2520,7 @@
                   },
                   {
                     type: "line",
-                    label: "理论 f(v)（2-D 麦克斯韦）",
+                    label: "理论二维麦克斯韦速率概率密度",
                     data: theory,
                     borderColor: COLORS.green,
                     pointRadius: 0,
@@ -2300,7 +2531,7 @@
               options: {
                 scales: {
                   x: axisScale("速率 v（无量纲）"),
-                  y: axisScale("f(v)"),
+                  y: axisScale("速率概率密度 f(v)"),
                 },
               },
             }, "brownian-speed");
@@ -2313,20 +2544,59 @@
           }
         }
 
+        function renderHeatExchangeChart() {
+          const data = ideal.data;
+          if (!data || !chartCanvas.value) return;
+          const points = data.chart?.points || [];
+          const labels = points.map((point) => Number(point[0]).toFixed(1));
+          const leftValues = points.map((point) => point[1]);
+          const rightValues = points.map((point) => point[2]);
+          if (!chart || chart._heatTopic !== "ideal-gas-heat-exchange") {
+            ensureChart({
+              type: "line",
+              data: {
+                labels,
+                datasets: [
+                  { label: "左室温度", data: leftValues, borderColor: COLORS.orange, pointRadius: 0, tension: 0.18 },
+                  { label: "右室温度", data: rightValues, borderColor: COLORS.blue, pointRadius: 0, tension: 0.18 },
+                ],
+              },
+              options: {
+                scales: {
+                  x: axisScale("时间 t / s"),
+                  y: { ...axisScale("温度 / °C"), min: 0, max: 100 },
+                },
+              },
+            }, "ideal-gas-heat-exchange");
+          } else {
+            updateChart((instance) => {
+              instance.data.labels = labels;
+              instance.data.datasets[0].data = leftValues;
+              instance.data.datasets[1].data = rightValues;
+            });
+          }
+        }
+
         function renderChartIfNeeded(force = false) {
           if (!force && !chartDirty) return;
           chartDirty = false;
 
           if (topic.value === "ideal-gas" && ideal.data) {
-            // P-V-T 相图（Plotly 3D + 平面图）重绘代价高：
-            // 粒子场景每帧更新，相图每 4 帧真正重建一次（约 130ms 一刷，视觉足够平滑）。
-            phaseChartThrottle += 1;
-            if (!force && phaseChartThrottle % 4 !== 0) return;
+            if (ideal.experiment_mode === "heat-exchange") {
+              if (phasePlotReady) destroyPhasePlot();
+              renderHeatExchangeChart();
+              return;
+            }
             if (chart) {
               chart.destroy();
               chart = null;
             }
-            renderPhasePlotly(ideal.data);
+            // 主视图只更新一张 P-V 图；三维相图按用户选择低频更新。
+            if (idealChartView.value === "pvt") {
+              phaseChartThrottle += 1;
+              if (!force && phaseChartThrottle % 4 !== 0) return;
+              renderPhasePlotly(ideal.data);
+            }
             renderPlanarCharts(ideal.data);
           } else if (topic.value === "brownian" && brownian.data) {
             const data = brownian.data;
@@ -2339,7 +2609,7 @@
                   labels,
                   datasets: [
                     {
-                      label: "MSD",
+                      label: "均方位移（MSD）",
                       data: data.msd || [],
                       borderColor: COLORS.blue,
                       backgroundColor: "rgba(55, 148, 255, 0.10)",
@@ -2348,7 +2618,7 @@
                       fill: true,
                     },
                     {
-                      label: "4Dt（理论）",
+                      label: "连续介质参考 4Dt",
                       data: theoryMsd,
                       borderColor: COLORS.green,
                       borderDash: [5, 4],
@@ -2360,7 +2630,7 @@
                 options: {
                   scales: {
                     x: axisScale("滞后时间 t"),
-                    y: axisScale("MSD"),
+                    y: axisScale("均方位移（MSD）"),
                   },
                 },
               }, "brownian");
@@ -2400,7 +2670,7 @@
                 },
                 options: {
                   scales: {
-                    x: axisScale("槽位 k"),
+                    x: axisScale("槽位位置 k（向右碰撞次数）"),
                     y: axisScale("概率"),
                   },
                 },
@@ -2423,59 +2693,109 @@
 
         async function applySeed() {
           error.value = "";
+          invalidatePendingParams();
+          const generation = requestGeneration;
+          galton.data = null;
           try {
             await ensureSession();
             const payload = await postJson("/api/session/reset", { seed: seed.value });
+            if (generation !== requestGeneration) return;
             sessionId.value = payload.session_id;
             idealFrame = 0;
             chartDirty = true;
             await bootstrapTopic(true);
           } catch (err) {
-            error.value = err.message || String(err);
+            if (generation === requestGeneration) error.value = err.message || String(err);
           }
         }
 
-        function debounceParams(fn, wait = 100) {
+        function invalidatePendingParams() {
+          for (const timer of pendingParams.values()) clearTimeout(timer);
+          pendingParams.clear();
+          requestGeneration += 1;
+        }
+
+        function debounceParams(key, fn, wait = 100) {
           return (...args) => {
-            if (pendingParam) clearTimeout(pendingParam);
-            pendingParam = setTimeout(() => fn(...args), wait);
+            const previous = pendingParams.get(key);
+            if (previous) clearTimeout(previous);
+            pendingParams.set(key, setTimeout(() => {
+              pendingParams.delete(key);
+              fn(...args);
+            }, wait));
           };
         }
 
-        const onIdealChange = debounceParams(async () => {
+        function idealVolumeFromFactor(mode = ideal.experiment_mode) {
+          const reference = mode === "first-law" && ideal.experiment_mode === "first-law"
+            ? (ideal.data?.adiabatic_reference_volume_litre || ideal.data?.reference_volume_litre || ideal.reference_volume_litre)
+            : (ideal.data?.reference_volume_litre || ideal.reference_volume_litre);
+          return reference * Number(ideal.volume_factor || 1);
+        }
+
+        function idealRequestBody(mode = ideal.experiment_mode) {
+          const body = {
+            temperature_c: ideal.temperature_c,
+            pressure_atm: ideal.experiment_mode === "isobaric" ? 1.0 : ideal.pressure_atm,
+            process_mode: ideal.process_mode,
+            experiment_mode: mode,
+            demo_particle_count: ideal.demo_particle_count,
+          };
+          if (mode === "pressure-micro" || mode === "isothermal" || mode === "first-law") {
+            body.volume_litre = idealVolumeFromFactor(mode);
+          }
+          if (mode === "heat-exchange") {
+            body.barrier = ideal.barrier;
+            body.temperature_left_c = ideal.temperature_left_c;
+            body.temperature_right_c = ideal.temperature_right_c;
+          }
+          return body;
+        }
+
+        function syncIdealControls(data) {
+          ideal.process_mode = data.process_mode;
+          if (data.experiment_mode) ideal.experiment_mode = data.experiment_mode;
+          if (data.experiment_mode === "heat-exchange") {
+            ideal.temperature_left_c = data.observables.temperature_left_c;
+            ideal.temperature_right_c = data.observables.temperature_right_c;
+            ideal.barrier = data.barrier;
+            return;
+          }
+          if (Number.isFinite(data.temperature_c)) ideal.temperature_c = data.temperature_c;
+          ideal.pressure_atm = data.pressure_atm;
+          if (data.reference_volume_litre > 0) ideal.reference_volume_litre = data.reference_volume_litre;
+          const reference = data.experiment_mode === "first-law"
+            ? data.adiabatic_reference_volume_litre
+            : data.reference_volume_litre;
+          if (reference > 0) ideal.volume_factor = data.volume_litre / reference;
+        }
+
+        const onIdealChange = debounceParams("ideal", async () => {
+          const generation = requestGeneration;
           try {
             await ensureSession();
-            const payload = await postJson("/api/live/ideal-gas/set", {
-              temperature_c: ideal.temperature_c,
-              pressure_atm: ideal.pressure_atm,
-              process_mode: ideal.process_mode,
-            });
+            const payload = await postJson("/api/live/ideal-gas/set", idealRequestBody());
+            if (generation !== requestGeneration) return;
             ideal.data = payload.data;
-            if (ideal.process_mode === "isochoric") {
-              ideal.pressure_atm = payload.data.pressure_atm;
-            }
+            syncIdealControls(payload.data);
             chartDirty = true;
             renderScene();
             renderChartIfNeeded(true);
             if (modalOpen.value) renderModal();
           } catch (err) {
-            error.value = err.message || String(err);
+            if (generation === requestGeneration) error.value = err.message || String(err);
           }
         });
 
         async function applyIdealNow() {
-          // 立即应用当前 T/P（无防抖），供自动步进使用。
+          // 立即应用当前模块控制量（无防抖），供自动步进使用。
           // 相图渲染走 renderChartIfNeeded 的节流（每 4 帧刷新），避免每帧重建 3D 场景。
+          const generation = requestGeneration;
           await ensureSession();
-          const payload = await postJson("/api/live/ideal-gas/set", {
-            temperature_c: ideal.temperature_c,
-            pressure_atm: ideal.pressure_atm,
-            process_mode: ideal.process_mode,
-          });
+          const payload = await postJson("/api/live/ideal-gas/set", idealRequestBody());
+          if (generation !== requestGeneration) return;
           ideal.data = payload.data;
-          if (ideal.process_mode === "isochoric") {
-            ideal.pressure_atm = payload.data.pressure_atm;
-          }
+          syncIdealControls(payload.data);
           chartDirty = true;
           renderScene();
           renderChartIfNeeded();
@@ -2520,10 +2840,12 @@
 
         // ---- 麦克斯韦温度自动步进 ----
         async function applyMaxwellNow() {
+          const generation = requestGeneration;
           await ensureSession();
           const payload = await postJson("/api/live/maxwell/set", {
             temperature_c: maxwell.temperature_c,
           });
+          if (generation !== requestGeneration) return;
           maxwell.data = payload.data;
           chartDirty = true;
           renderScene();
@@ -2552,7 +2874,37 @@
           await applyMaxwellNow();
         }
 
+        function setIdealChartView(view) {
+          if (view !== "pv" && view !== "pvt") return;
+          if (idealChartView.value === view) return;
+          idealChartView.value = view;
+          planarSignature = "";
+          chartDirty = true;
+          nextTick(() => {
+            if (!ideal.data) return;
+            if (view === "pv") destroyPhasePlot();
+            renderScene();
+            renderChartIfNeeded(true);
+            if (view === "pvt" && phaseHost.value) Plotly.Plots.resize(phaseHost.value);
+          });
+        }
+
+        function onIdealExtraToggle(event) {
+          if (!event.target.open || !ideal.data) return;
+          // 展开后再创建补充图，保证 Chart.js 能拿到真实尺寸。
+          planarSignature = "";
+          nextTick(() => {
+            renderPlanarCharts(ideal.data);
+            for (const instance of [planarPtChart, planarVtChart]) {
+              if (instance) instance.resize();
+            }
+          });
+        }
+
         async function setIdealProcessMode(mode) {
+          const matchingExperiment = idealExperiments.find((item) => item.id === mode);
+          if (matchingExperiment) return setIdealExperiment(mode);
+          const generation = requestGeneration;
           try {
             await ensureSession();
             const payload = await postJson("/api/live/ideal-gas/set", {
@@ -2560,6 +2912,7 @@
               pressure_atm: ideal.pressure_atm,
               process_mode: mode,
             });
+            if (generation !== requestGeneration) return;
             ideal.process_mode = mode;
             ideal.data = payload.data;
             if (mode === "isochoric") {
@@ -2569,111 +2922,162 @@
             renderScene();
             renderChartIfNeeded(true);
           } catch (err) {
-            error.value = err.message || String(err);
+            if (generation === requestGeneration) error.value = err.message || String(err);
           }
         }
 
-        const onBrownianChange = debounceParams(async () => {
+        async function setIdealExperiment(mode) {
+          invalidatePendingParams();
+          const generation = requestGeneration;
+          const previousMode = ideal.experiment_mode;
+          if (mode === "isobaric") ideal.pressure_atm = 1.0;
+          try {
+            await ensureSession();
+            const payload = await postJson("/api/live/ideal-gas/set", idealRequestBody(mode));
+            if (generation !== requestGeneration) return;
+            ideal.experiment_mode = mode;
+            ideal.data = payload.data;
+            syncIdealControls(payload.data);
+            chartDirty = true;
+            planarSignature = "";
+            await nextTick();
+            renderScene();
+            renderChartIfNeeded(true);
+          } catch (err) {
+            if (generation === requestGeneration) {
+              ideal.experiment_mode = previousMode;
+              error.value = err.message || String(err);
+            }
+          }
+        }
+
+        async function setHeatBarrier(barrier) {
+          const previousBarrier = ideal.barrier;
+          const generation = requestGeneration;
+          ideal.barrier = barrier;
+          error.value = "";
+          try {
+            await applyIdealNow();
+          } catch (err) {
+            if (generation === requestGeneration) {
+              ideal.barrier = previousBarrier;
+              error.value = err.message || String(err);
+            }
+          }
+        }
+
+        const onBrownianChange = debounceParams("brownian", async () => {
+          const generation = requestGeneration;
           try {
             await ensureSession();
             const payload = await postJson("/api/live/brownian/set", {
               mass_ratio: brownian.mass_ratio,
               molecule_count: brownian.molecule_count,
             });
+            if (generation !== requestGeneration) return;
             brownian.data = payload.data;
             chartDirty = true;
             renderScene();
             renderChartIfNeeded(true);
           } catch (err) {
-            error.value = err.message || String(err);
+            if (generation === requestGeneration) error.value = err.message || String(err);
           }
         });
 
-        const onMaxwellChange = debounceParams(async () => {
+        const onMaxwellChange = debounceParams("maxwell", async () => {
+          const generation = requestGeneration;
           try {
             await ensureSession();
             const payload = await postJson("/api/live/maxwell/set", {
               temperature_c: maxwell.temperature_c,
             });
+            if (generation !== requestGeneration) return;
             maxwell.data = payload.data;
             chartDirty = true;
             renderScene();
             renderChartIfNeeded(true);
           } catch (err) {
-            error.value = err.message || String(err);
+            if (generation === requestGeneration) error.value = err.message || String(err);
           }
         });
 
         async function resetBrownian() {
+          const generation = requestGeneration;
           try {
             await ensureSession();
             const payload = await postJson("/api/live/brownian/reset");
+            if (generation !== requestGeneration) return;
             brownian.data = payload.data;
             chartDirty = true;
             renderScene();
             renderChartIfNeeded(true);
           } catch (err) {
-            error.value = err.message || String(err);
+            if (generation === requestGeneration) error.value = err.message || String(err);
           }
         }
 
         async function resetMaxwell() {
+          const generation = requestGeneration;
           try {
             await ensureSession();
             const payload = await postJson("/api/live/maxwell/reset");
+            if (generation !== requestGeneration) return;
             maxwell.data = payload.data;
             chartDirty = true;
             renderScene();
             renderChartIfNeeded(true);
           } catch (err) {
-            error.value = err.message || String(err);
+            if (generation === requestGeneration) error.value = err.message || String(err);
           }
         }
 
-        async function startGalton() {
+        async function startGalton({ autoplay = true } = {}) {
+          const generation = requestGeneration;
           try {
             await ensureSession();
             const payload = await postJson("/api/live/galton/start", {
               particle_count: galton.particle_count,
             });
+            if (generation !== requestGeneration) return;
             galton.data = payload.data;
             chartDirty = true;
-            paused.value = false;
+            if (autoplay) paused.value = false;
             renderScene();
             renderChartIfNeeded(true);
           } catch (err) {
-            error.value = err.message || String(err);
+            if (generation === requestGeneration) error.value = err.message || String(err);
           }
         }
 
         async function bootstrapTopic(forceChart = false) {
+          const generation = requestGeneration;
           await ensureSession();
+          if (generation !== requestGeneration) return;
           if (topic.value === "ideal-gas") {
-            const payload = await postJson("/api/live/ideal-gas/set", {
-              temperature_c: ideal.temperature_c,
-              pressure_atm: ideal.pressure_atm,
-              process_mode: ideal.process_mode,
-            });
+            const payload = await postJson("/api/live/ideal-gas/set", idealRequestBody());
+            if (generation !== requestGeneration) return;
             ideal.data = payload.data;
-            if (ideal.process_mode === "isochoric") {
-              ideal.pressure_atm = payload.data.pressure_atm;
-            }
+            syncIdealControls(payload.data);
           } else if (topic.value === "brownian") {
             const payload = await postJson("/api/live/brownian/set", {
               mass_ratio: brownian.mass_ratio,
               molecule_count: brownian.molecule_count,
             });
+            if (generation !== requestGeneration) return;
             brownian.data = payload.data;
           } else if (topic.value === "maxwell") {
             const payload = await postJson("/api/live/maxwell/set", {
               temperature_c: maxwell.temperature_c,
             });
+            if (generation !== requestGeneration) return;
             maxwell.data = payload.data;
           } else if (!galton.data) {
-            await startGalton();
+            await startGalton({ autoplay: false });
+            if (generation !== requestGeneration) return;
           }
           chartDirty = true;
           await nextTick();
+          if (generation !== requestGeneration) return;
           renderScene();
           renderChartIfNeeded(forceChart || true);
         }
@@ -2703,18 +3107,23 @@
         async function stepOnce(deltaMs = 33) {
           if (busy.value || paused.value) return;
           busy.value = true;
+          const generation = requestGeneration;
           try {
             if (topic.value === "ideal-gas") {
               if (sweep.enabled) {
                 await sweepStep(deltaMs);
+                if (generation !== requestGeneration) return;
               }
               const payload = await postJson("/api/live/ideal-gas/step", { steps: 1 });
+              if (generation !== requestGeneration) return;
               ideal.data = payload.data;
+              syncIdealControls(payload.data);
               idealFrame += 1;
               // 粒子场景每帧重绘；相图（3D/平面）每 4 帧刷新即可
               if (idealFrame % 4 === 0) chartDirty = true;
             } else if (topic.value === "brownian") {
               const payload = await postJson("/api/live/brownian/step", { steps: 2 });
+              if (generation !== requestGeneration) return;
               brownian.data = payload.data;
               // 场景每帧渲染，图表（MSD/速度分布）每 6 帧刷新一次即可
               brownianFrame += 1;
@@ -2722,8 +3131,10 @@
             } else if (topic.value === "maxwell") {
               if (maxwellSweep.enabled) {
                 await maxwellSweepStep(deltaMs);
+                if (generation !== requestGeneration) return;
               }
               const payload = await postJson("/api/live/maxwell/step", { steps: 1 });
+              if (generation !== requestGeneration) return;
               const histV = maxwell.data?.hist_v;
               const histF = maxwell.data?.hist_f;
               maxwell.data = payload.data;
@@ -2734,16 +3145,18 @@
             } else if (topic.value === "galton") {
               if (galton.data && !galton.data.finished) {
                 const payload = await postJson("/api/live/galton/step", { steps: 1 });
+                if (generation !== requestGeneration) return;
                 galton.data = payload.data;
                 if (galton.data.finished) chartDirty = true;
               }
             }
+            if (generation !== requestGeneration) return;
             renderScene();
             renderChartIfNeeded();
             if (modalOpen.value && topic.value === "ideal-gas") renderModal();
             error.value = "";
           } catch (err) {
-            error.value = err.message || String(err);
+            if (generation === requestGeneration) error.value = err.message || String(err);
           } finally {
             busy.value = false;
           }
@@ -2790,7 +3203,13 @@
 
         async function switchTopic(id) {
           if (topic.value === id) return;
+          invalidatePendingParams();
+          const generation = requestGeneration;
+          error.value = "";
+          const previousTopic = topic.value;
+          if (previousTopic === "ideal-gas") destroyPhasePlot();
           topic.value = id;
+          if (id === "ideal-gas") idealChartView.value = "pv";
           chartDirty = true;
           if (modalOpen.value) closeModal();
           if (infoOpen.value) closeInfo();
@@ -2812,7 +3231,7 @@
             // 首次进入该专题：展示实验说明/使用教程弹窗
             showTopicInfo(id);
           } catch (err) {
-            error.value = err.message || String(err);
+            if (generation === requestGeneration) error.value = err.message || String(err);
           }
         }
 
@@ -2821,7 +3240,7 @@
           resizeTimer = setTimeout(() => {
             renderScene();
             if (topic.value === "ideal-gas" && ideal.data) {
-              if (phaseHost.value) Plotly.Plots.resize(phaseHost.value);
+              if (idealChartView.value === "pvt" && phaseHost.value) Plotly.Plots.resize(phaseHost.value);
               for (const instance of [planarPvChart, planarPtChart, planarVtChart]) {
                 if (instance) instance.resize();
               }
@@ -2877,16 +3296,20 @@
           if (resizeObserver) resizeObserver.disconnect();
           if (resizeTimer) clearTimeout(resizeTimer);
           if (rafId) cancelAnimationFrame(rafId);
-          if (pendingParam) clearTimeout(pendingParam);
+          invalidatePendingParams();
           if (chart) chart.destroy();
           if (componentChart) componentChart.destroy();
+          destroyPhasePlot();
           destroyPlanarCharts();
         });
 
         return {
           topics,
           processModes,
+          idealExperiments,
           topic,
+          standalone,
+          hasOverview,
           seed,
           paused,
           error,
@@ -2916,13 +3339,17 @@
           chartHost,
           componentChartHost,
           ideal,
+          idealChartView,
           brownian,
           maxwell,
           galton,
           sweep,
           maxwellSweep,
           currentMeta,
+          idealModeMeta,
+          idealVolumeFromFactor,
           processLabel,
+          processDescription,
           sweepTargetLabel,
           sweepRateLabel,
           maxwellSweepRateLabel,
@@ -2936,7 +3363,12 @@
           togglePause,
           switchTopic,
           onTopicKeydown,
+          setIdealChartView,
           setIdealProcessMode,
+          setIdealExperiment,
+          setHeatBarrier,
+          renderScene,
+          onIdealExtraToggle,
           setSweepTarget,
           setSweepDirection,
           toggleSweep,

@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from heatlab.constants import STANDARD_ATMOSPHERE
-from heatlab.models.ideal_gas import IdealGasModel
+from heatlab.models.ideal_gas import HeatExchangeModel, IdealGasModel
 from heatlab.ui.common import (
     ACCENT,
     ACCENT_2,
@@ -31,11 +31,14 @@ from heatlab.ui.common import (
 class IdealGasTab(QWidget):
     """热力学专题：3D 分子热运动场景 + 3D P-V-T 相图。"""
 
-    PROCESS_MODES: tuple[tuple[str, str], ...] = (
-        ("free", "自由"),
+    EXPERIMENTS: tuple[tuple[str, str], ...] = (
+        ("temperature-micro", "温度微观"),
+        ("pressure-micro", "压强微观"),
         ("isothermal", "等温"),
-        ("isobaric", "等压"),
         ("isochoric", "等容"),
+        ("isobaric", "等压"),
+        ("heat-exchange", "两室热交换"),
+        ("first-law", "第一定律"),
     )
 
     # 三维盒子 12 条棱（顶点索引对）
@@ -45,9 +48,19 @@ class IdealGasTab(QWidget):
         (0, 4), (1, 5), (2, 6), (3, 7),
     )
 
-    def __init__(self, model: IdealGasModel, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        model: IdealGasModel,
+        heat_exchange: HeatExchangeModel | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.model = model
+        self.heat_exchange = heat_exchange or HeatExchangeModel(model.rng)
+        self.active_experiment = "temperature-micro"
+        self._applying_experiment = False
+        self._divider_line = None
+        self._heat_phase_line = None
         self.frame_count = 0
 
         # ---- 场景：3D 分子无规则热运动（体积随 T/P 变化，粒子按速率着色） ----
@@ -92,27 +105,66 @@ class IdealGasTab(QWidget):
             [], [], [], "--", color="#89d185", linewidth=1.6, alpha=0.9
         )
         self.theory_line.set_visible(False)
-        self.ax_phase.set_xlabel("P / atm")
-        self.ax_phase.set_ylabel("V / L")
-        self.ax_phase.set_zlabel("T / K")
-        self.ax_phase.set_title("P-V-T 相图")
+        self.ax_phase.set_xlabel("压强 P / atm")
+        self.ax_phase.set_ylabel("体积 V / L")
+        self.ax_phase.set_zlabel("绝对温度 T / K")
+        self.ax_phase.set_title("压强、体积与绝对温度状态图")
         self.ax_phase.set_xlim(0.95, 2.05)
         self.ax_phase.set_zlim(270, 380)
         style_3d_axes(self.ax_phase)  # re-apply after labels/title
 
         # ---- 控制面板 ----
-        panel = ControlPanel("热力学", lead="调 T/P 或切换等温/等压/等容过程，观察 3D 分子运动与 P-V 状态轨迹。")
-        self.process_group, self.process_buttons = self._build_process_buttons(panel)
+        panel = ControlPanel("热力学", lead="选择一组单变量实验；固定量由模型保持，观察分子运动、状态关系与能量读数。")
+        self.process_group, self.process_buttons = self._build_experiment_buttons(panel)
         self.temperature = LabeledSlider(
-            "温度 T", 0, 100, 20, formatter=lambda v: f"{v:.0f} °C"
+            "温度", 0, 100, 20, formatter=lambda v: f"{v:.0f} °C"
         )
         self.pressure = LabeledSlider(
-            "压强 P", 100, 200, 100, transform=lambda x: x / 100, formatter=lambda v: f"{v:.2f} atm"
+            "压强", 100, 200, 100, transform=lambda x: x / 100, formatter=lambda v: f"{v:.2f} atm"
+        )
+        self.volume = LabeledSlider(
+            "相对体积 V/V₀", 20, 500, 100, transform=lambda x: x / 100, formatter=lambda v: f"{v:.2f} V₀"
+        )
+        self.left_temperature = LabeledSlider(
+            "左室温度", 0, 100, 80, formatter=lambda v: f"{v:.0f} °C"
+        )
+        self.right_temperature = LabeledSlider(
+            "右室温度", 0, 100, 20, formatter=lambda v: f"{v:.0f} °C"
+        )
+        self.barrier = "adiabatic"
+        self.barrier_group = QButtonGroup(self)
+        self.barrier_group.setExclusive(True)
+        self.adiabatic_button = QPushButton("绝热隔板")
+        self.conductive_button = QPushButton("导热隔板")
+        for button in (self.adiabatic_button, self.conductive_button):
+            button.setCheckable(True)
+            self.barrier_group.addButton(button)
+        self.adiabatic_button.setChecked(True)
+        self.adiabatic_button.clicked.connect(lambda _checked=False: self._set_barrier("adiabatic"))
+        self.conductive_button.clicked.connect(lambda _checked=False: self._set_barrier("conductive"))
+        barrier_container = QWidget()
+        barrier_layout = QGridLayout(barrier_container)
+        barrier_layout.setContentsMargins(0, 0, 0, 0)
+        barrier_layout.setSpacing(4)
+        barrier_layout.addWidget(self.adiabatic_button, 0, 0)
+        barrier_layout.addWidget(self.conductive_button, 0, 1)
+        self.barrier_container = barrier_container
+        self.demo_particles = LabeledSlider(
+            "演示粒子数（N_demo）", 5, 100, 60, formatter=lambda v: f"{v:.0f}"
         )
         self.temperature.valueChanged.connect(self._conditions_changed)
         self.pressure.valueChanged.connect(self._conditions_changed)
+        self.volume.valueChanged.connect(self._conditions_changed)
+        self.left_temperature.valueChanged.connect(self._conditions_changed)
+        self.right_temperature.valueChanged.connect(self._conditions_changed)
+        self.demo_particles.valueChanged.connect(self._conditions_changed)
         panel.add(self.temperature)
         panel.add(self.pressure)
+        panel.add(self.volume)
+        panel.add(self.left_temperature)
+        panel.add(self.right_temperature)
+        panel.add(self.barrier_container)
+        panel.add(self.demo_particles)
 
         # ---- 自动步进控件 ----
         sweep_container = QWidget()
@@ -158,8 +210,12 @@ class IdealGasTab(QWidget):
         sweep_layout.addWidget(self.sweep_rate)
         sweep_layout.addWidget(self.sweep_button)
         panel.add(sweep_container)
+        self.sweep_container = sweep_container
 
-        self.metrics = MetricGrid("体积 V", "温度 T", "设定 P", "动能论 P", "状态坐标 (P,V,T)")
+        self.metrics = MetricGrid(
+            "体积 V", "温度 T", "压强 P", "动量通量估计压强",
+            "状态坐标（压强 P、体积 V、绝对温度 T）",
+        )
         panel.add(self.metrics)
 
         self.pause_button = QPushButton("暂停")
@@ -175,7 +231,7 @@ class IdealGasTab(QWidget):
         panel.finish()
 
         self.workbench = WorkbenchPanel(
-            panel, "分子无规则热运动（3D）", self.scene_canvas, "P-V-T 相图", self.chart_canvas
+            panel, "分子无规则热运动（3D）", self.scene_canvas, "压强、体积与绝对温度状态图", self.chart_canvas
         )
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -188,50 +244,95 @@ class IdealGasTab(QWidget):
         self._sweep_t_accum = 0.0
         self._sweep_p_accum = 0.0
         self.timer.start()
+        self._set_experiment("temperature-micro", True)
         self._update_all()
 
-    def _build_process_buttons(self, panel: ControlPanel) -> tuple[QButtonGroup, dict[str, QPushButton]]:
+    def _build_experiment_buttons(self, panel: ControlPanel) -> tuple[QButtonGroup, dict[str, QPushButton]]:
         group = QButtonGroup(self)
         group.setExclusive(True)
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(4)
         buttons: dict[str, QPushButton] = {}
-        for column, (mode_id, label) in enumerate(self.PROCESS_MODES):
+        for index, (mode_id, label) in enumerate(self.EXPERIMENTS):
             button = QPushButton(label)
             button.setCheckable(True)
-            button.clicked.connect(lambda checked, m=mode_id: self._set_process_mode(m, checked))
+            button.clicked.connect(lambda checked, m=mode_id: self._set_experiment(m, checked))
             group.addButton(button)
             buttons[mode_id] = button
-            grid.addWidget(button, 0, column)
+            grid.addWidget(button, index // 2, index % 2)
         container = QWidget()
         container.setLayout(grid)
         panel.add(container)
-        buttons["free"].setChecked(True)
+        buttons["temperature-micro"].setChecked(True)
         return group, buttons
 
-    def _set_process_mode(self, mode_id: str, checked: bool) -> None:
+    def _set_experiment(self, mode_id: str, checked: bool) -> None:
         if not checked:
             return
-        self.model.set_process_mode(mode_id)
-        self.pressure.slider.setEnabled(mode_id != "isochoric")
-        self.sweep_p_btn.setEnabled(mode_id != "isochoric")
-        if mode_id == "isochoric":
-            self.pressure.set_value(self.model.state.pressure_atm)
-            if self.sweep_target == "pressure":
-                self.sweep_t_btn.setChecked(True)
-                self._refresh_sweep_rate_text()
+        self.active_experiment = mode_id
+        volume_mode = mode_id in ("pressure-micro", "isothermal", "first-law")
+        temperature_mode = mode_id in ("temperature-micro", "isochoric", "isobaric")
+        heat_mode = mode_id == "heat-exchange"
+        self.temperature.setVisible(temperature_mode)
+        self.volume.setVisible(volume_mode)
+        self.left_temperature.setVisible(heat_mode)
+        self.right_temperature.setVisible(heat_mode)
+        self.barrier_container.setVisible(heat_mode)
+        self.pressure.setVisible(False)
+        self.sweep_container.setVisible(False)
+        self.volume.slider.setMinimum(20 if mode_id == "first-law" else 50)
+        self.volume.slider.setMaximum(500 if mode_id == "first-law" else 300)
+        self._apply_experiment()
         self._update_scene()
         self._update_chart()
         self._update_metrics()
 
     def _conditions_changed(self, _value: float) -> None:
-        self.model.set_conditions(self.temperature.value, self.pressure.value)
-        if self.model.state.process_mode == "isochoric":
-            self.pressure.set_value(self.model.state.pressure_atm)
+        if self._applying_experiment:
+            return
+        self._apply_experiment()
         self._update_scene()
         self._update_chart()
         self._update_metrics()
+
+    def _apply_experiment(self) -> None:
+        self._applying_experiment = True
+        try:
+            if self.active_experiment == "heat-exchange":
+                self.heat_exchange.configure(
+                    barrier=self.barrier,
+                    temperature_left_c=self.left_temperature.value,
+                    temperature_right_c=self.right_temperature.value,
+                    demo_particle_count=int(self.demo_particles.value),
+                )
+                return
+            volume_litre = None
+            if self.active_experiment in ("pressure-micro", "isothermal", "first-law"):
+                reference = (
+                    self.model.adiabatic_reference_volume_litre
+                    if self.active_experiment == "first-law"
+                    and self.model.adiabatic_reference_volume_litre > 0
+                    else self.model.reference_volume_litre
+                )
+                volume_litre = reference * self.volume.value
+            self.model.configure_experiment(
+                self.active_experiment,
+                temperature_c=self.temperature.value,
+                pressure_atm=1.0,
+                volume_litre=volume_litre,
+                demo_particle_count=int(self.demo_particles.value),
+            )
+        finally:
+            self._applying_experiment = False
+
+    def _set_barrier(self, barrier: str) -> None:
+        self.barrier = barrier
+        if self.active_experiment == "heat-exchange":
+            self._apply_experiment()
+            self._update_scene()
+            self._update_chart()
+            self._update_metrics()
 
     def _toggle_pause(self, paused: bool) -> None:
         if paused:
@@ -246,7 +347,10 @@ class IdealGasTab(QWidget):
         self._toggle_pause(paused)
 
     def _reset(self) -> None:
-        self.model.reset()
+        if self.active_experiment == "heat-exchange":
+            self.heat_exchange.reset()
+        else:
+            self.model.reset()
         self._update_all()
 
     # ---- 自动步进 ----
@@ -311,9 +415,9 @@ class IdealGasTab(QWidget):
             if new_value <= 100 or new_value >= 200:
                 self._stop_sweep()
 
-    def _box_corners(self) -> np.ndarray:
+    def _box_corners(self, width: float | None = None) -> np.ndarray:
         """返回三维盒子的 8 个顶点（按 _BOX_EDGES 索引）。"""
-        length = self.model.box_length
+        length = self.model.box_length if width is None else width
         height = self.model.box_height
         depth = self.model.box_depth
         return np.array([
@@ -321,8 +425,8 @@ class IdealGasTab(QWidget):
             [0, 0, depth], [length, 0, depth], [0, height, depth], [length, height, depth],
         ], dtype=float)
 
-    def _draw_box_edges(self) -> None:
-        corners = self._box_corners()
+    def _draw_box_edges(self, width: float | None = None) -> None:
+        corners = self._box_corners(width=width)
         for first, second in self._BOX_EDGES:
             line, = self.ax_box.plot(
                 [corners[first, 0], corners[second, 0]],
@@ -334,6 +438,40 @@ class IdealGasTab(QWidget):
 
     def _update_scene(self) -> None:
         """条件变化后重绘盒体并更新粒子着色。"""
+        if self.active_experiment == "heat-exchange":
+            points = self.heat_exchange.positions
+            speeds = np.concatenate((self.heat_exchange.speeds_left, self.heat_exchange.speeds_right))
+            width = self.heat_exchange.box_width
+            for artist in self._box_line_artists:
+                artist.remove()
+            self._box_line_artists.clear()
+            self._draw_box_edges(width=width)
+            if self._divider_line is None:
+                self._divider_line, = self.ax_box.plot(
+                    [0.5, 0.5], [0, 1], [0, 1], color=ACCENT_2, linewidth=2.0
+                )
+            self._divider_line.set_color(
+                ACCENT_2 if self.heat_exchange.state.barrier == "conductive" else "#89929e"
+            )
+            self._divider_line.set_linestyle(
+                "-" if self.heat_exchange.state.barrier == "conductive" else "--"
+            )
+            self.ax_box.set_box_aspect((width, 1, 1))
+            self.ax_box.set_xlim(0, width)
+            self.ax_box.set_ylim(0, 1)
+            self.ax_box.set_zlim(0, 1)
+            self.particle_scatter._offsets3d = (points[:, 0], points[:, 1], points[:, 2])
+            self.particle_scatter.set_array(speeds)
+            self.particle_scatter.set_clim(float(speeds.min()), float(speeds.max()))
+            self.ax_box.set_title(
+                f"两室热交换｜左 {self.heat_exchange.state.temperature_left_c:.0f} °C，"
+                f"右 {self.heat_exchange.state.temperature_right_c:.0f} °C"
+            )
+            self.scene_canvas.draw_idle()
+            return
+        if self._divider_line is not None:
+            self._divider_line.remove()
+            self._divider_line = None
         for artist in self._box_line_artists:
             artist.remove()
         self._box_line_artists.clear()
@@ -355,53 +493,161 @@ class IdealGasTab(QWidget):
         self.particle_scatter.set_clim(float(speeds.min()), float(speeds.max()))
 
     def _tick(self) -> None:
-        self.model.step()
-        x, y, z = self.model.positions.T
+        if self.active_experiment == "heat-exchange":
+            self.heat_exchange.step()
+            points = self.heat_exchange.positions
+            speeds = np.concatenate((self.heat_exchange.speeds_left, self.heat_exchange.speeds_right))
+        else:
+            self.model.step()
+            points = self.model.positions
+            speeds = self.model.speeds
+        x, y, z = points.T
         self.particle_scatter._offsets3d = (x, y, z)
-        self._update_particle_colors()
+        self.particle_scatter.set_array(speeds)
         self.frame_count += 1
         if self.frame_count % 12 == 0:
             self._update_metrics()
+            if self.active_experiment == "heat-exchange":
+                self._update_chart()
         self._sweep_step()
         self.scene_canvas.draw_idle()
 
     def _update_metrics(self) -> None:
+        if self.active_experiment == "heat-exchange":
+            state = self.heat_exchange.state
+            rows = self.metrics._rows
+            labels = ("左室温度", "右室温度", "热流率", "累计传热", "模拟时间")
+            values = (
+                f"{state.temperature_left_c:.2f} °C",
+                f"{state.temperature_right_c:.2f} °C",
+                f"{self.heat_exchange.heat_rate_w:.3e} W",
+                f"{self.heat_exchange.heat_transferred_j:.3e} J",
+                f"{self.heat_exchange.elapsed_s:.2f} s",
+            )
+            for row, label in zip(rows, labels, strict=True):
+                row.key_label.setText(label)
+                row.set_value(values[rows.index(row)])
+            self.ax_box.set_title(
+                f"两室热交换｜左 {state.temperature_left_c:.0f} °C，右 {state.temperature_right_c:.0f} °C"
+            )
+            return
         state = self.model.state
-        kinetic_atm = self.model.kinetic_pressure_pa() / STANDARD_ATMOSPHERE
-        self.metrics.set_values({
-            "体积 V": f"{state.volume_litre:.4f} L",
-            "温度 T": f"{state.temperature_k:.2f} K",
-            "设定 P": f"{state.pressure_atm:.3f} atm",
-            "动能论 P": f"{kinetic_atm:.3f} atm",
-            "状态坐标 (P,V,T)": (
-                f"({state.pressure_atm:.2f} atm, {state.volume_litre:.3f} L, "
-                f"{state.temperature_k:.2f} K)"
-            ),
-        })
+        rows = self.metrics._rows
+        if self.active_experiment == "first-law":
+            labels = ("体积 V", "温度 T", "热量 Q", "内能变化 ΔU", "气体对外做功 W")
+            values = (
+                f"{state.volume_litre:.4f} L",
+                f"{state.temperature_k:.2f} K",
+                f"{self.model.heat_added_j:.3e} J",
+                f"{self.model.internal_energy_j - self.model.adiabatic_initial_internal_energy_j:.3e} J",
+                f"{self.model.work_by_gas_j:.3e} J",
+            )
+        else:
+            labels = (
+                "体积 V", "温度 T", "压强 P", "动量通量估计压强",
+                "状态坐标（压强 P、体积 V、绝对温度 T）",
+            )
+            kinetic_atm = self.model.kinetic_pressure_pa() / STANDARD_ATMOSPHERE
+            values = (
+                f"{state.volume_litre:.4f} L",
+                f"{state.temperature_k:.2f} K",
+                f"{state.pressure_atm:.3f} atm",
+                f"{kinetic_atm:.3f} atm",
+                f"({state.pressure_atm:.2f} atm, {state.volume_litre:.3f} L, {state.temperature_k:.2f} K)",
+            )
+        for row, label, value in zip(rows, labels, values, strict=True):
+            row.key_label.setText(label)
+            row.set_value(value)
         self.ax_box.set_title(
             f"分子无规则热运动｜T={state.temperature_c:.0f} °C，P={state.pressure_atm:.2f} atm"
         )
 
+    def _relation_coordinates(
+        self,
+        points: np.ndarray,
+        relation: str,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        if relation == "pt":
+            return points[:, 2], points[:, 0], np.zeros(len(points))
+        if relation == "vt":
+            return points[:, 2], points[:, 1], np.zeros(len(points))
+        return points[:, 0], points[:, 1], points[:, 2]
+
     def _update_chart(self) -> None:
+        if self.active_experiment == "heat-exchange":
+            history = np.asarray(self.heat_exchange.temperature_history)
+            if not history.size:
+                return
+            if self._heat_phase_line is None:
+                self._heat_phase_line, = self.ax_phase.plot(
+                    [], [], [], color=ACCENT_2, linewidth=1.6, label="左室 / 右室温度"
+                )
+            self.phase_line.set_visible(False)
+            self.state_point.set_visible(False)
+            self.theory_line.set_visible(False)
+            self._heat_phase_line.set_data_3d(history[:, 0], history[:, 1], history[:, 2])
+            self.ax_phase.set_xlabel("时间 t / s")
+            self.ax_phase.set_ylabel("左室温度 / °C")
+            self.ax_phase.set_zlabel("右室温度 / °C")
+            self.ax_phase.set_title("两室温度随时间变化")
+            self.ax_phase.set_xlim(float(history[:, 0].min()), max(1.0, float(history[:, 0].max())))
+            self.ax_phase.set_ylim(0, 100)
+            self.ax_phase.set_zlim(0, 100)
+            self.chart_canvas.draw_idle()
+            return
+        if self._heat_phase_line is not None:
+            self._heat_phase_line.set_visible(False)
+        self.phase_line.set_visible(True)
+        self.state_point.set_visible(True)
         history = np.asarray(self.model.phase_history)
         if not history.size:
             return
-        self.phase_line.set_data_3d(history[:, 0], history[:, 1], history[:, 2])
-        self.state_point._offsets3d = (
-            history[-1:, 0], history[-1:, 1], history[-1:, 2],
+        relation = (
+            "pt" if self.active_experiment in ("temperature-micro", "isochoric")
+            else "vt" if self.active_experiment == "isobaric"
+            else "pv"
         )
+        history_x, history_y, history_z = self._relation_coordinates(history, relation)
+        self.phase_line.set_data_3d(history_x, history_y, history_z)
+        self.state_point._offsets3d = (history_x[-1:], history_y[-1:], history_z[-1:])
         process_line_3d = self.model.process_line_3d()
         if process_line_3d is not None:
-            pressures, volumes, temperatures = process_line_3d
-            self.theory_line.set_data_3d(pressures, volumes, temperatures)
+            theory = np.column_stack(process_line_3d)
+            theory_x, theory_y, theory_z = self._relation_coordinates(theory, relation)
+            self.theory_line.set_data_3d(theory_x, theory_y, theory_z)
             self.theory_line.set_visible(True)
         else:
             self.theory_line.set_visible(False)
-        self.ax_phase.set_xlim(0.95, 2.05)
-        vmin = max(0.001, float(history[:, 1].min()) * 0.92)
-        vmax = float(history[:, 1].max()) * 1.08
-        self.ax_phase.set_ylim(vmin, vmax)
-        self.ax_phase.set_zlim(270, 380)
+        if relation == "pt":
+            self.ax_phase.set_xlabel("绝对温度 T / K")
+            self.ax_phase.set_ylabel("压强 P / atm")
+            self.ax_phase.set_zlabel("")
+            self.ax_phase.zaxis.set_visible(False)
+            self.ax_phase.set_xlim(float(history_x.min()) * 0.98, float(history_x.max()) * 1.02)
+            self.ax_phase.set_ylim(max(0.001, float(history_y.min()) * 0.92), float(history_y.max()) * 1.08)
+            self.ax_phase.set_zlim(-1.0, 1.0)
+            self.ax_phase.view_init(elev=90, azim=-90)
+            self.ax_phase.set_title("压强与绝对温度关系")
+        elif relation == "vt":
+            self.ax_phase.set_xlabel("绝对温度 T / K")
+            self.ax_phase.set_ylabel("体积 V / L")
+            self.ax_phase.set_zlabel("")
+            self.ax_phase.zaxis.set_visible(False)
+            self.ax_phase.set_xlim(float(history_x.min()) * 0.98, float(history_x.max()) * 1.02)
+            self.ax_phase.set_ylim(max(0.001, float(history_y.min()) * 0.92), float(history_y.max()) * 1.08)
+            self.ax_phase.set_zlim(-1.0, 1.0)
+            self.ax_phase.view_init(elev=90, azim=-90)
+            self.ax_phase.set_title("体积与绝对温度关系")
+        else:
+            self.ax_phase.set_xlabel("压强 P / atm")
+            self.ax_phase.set_ylabel("体积 V / L")
+            self.ax_phase.set_zlabel("绝对温度 T / K")
+            self.ax_phase.zaxis.set_visible(True)
+            self.ax_phase.set_xlim(max(0.001, float(history_x.min()) * 0.92), float(history_x.max()) * 1.08)
+            self.ax_phase.set_ylim(max(0.001, float(history_y.min()) * 0.92), float(history_y.max()) * 1.08)
+            self.ax_phase.set_zlim(float(history_z.min()) * 0.92, float(history_z.max()) * 1.08)
+            self.ax_phase.view_init(elev=25, azim=-60)
+            self.ax_phase.set_title("压强与体积状态图")
         self.chart_canvas.draw_idle()
 
     def _update_all(self) -> None:

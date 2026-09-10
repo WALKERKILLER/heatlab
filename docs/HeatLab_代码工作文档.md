@@ -43,10 +43,10 @@ lang: zh-CN
 
 | 编号 | 原始任务 | 原文明确要求 | 本实现 |
 |---|---|---|---|
-| H-01 | 理想气体 | `PV=nRT`；封闭空间内分子无规则热运动；温度和压强改变时体积及热运动随之改变 | 粒子动画、可变容器宽度、温度决定速度尺度、压强/温度共同决定体积 |
-| H-02 | 理想气体相图 | 给出 `(P,V)` 坐标值，轨迹只显示 PV 曲线 | **3D P-V-T 相图**（Plotly，给出 `(P,V,T)` 坐标值）与 **P-V / P-T / V-T 平面图**；等温/等压/等容过程模式与理论过程线 |
-| H-03 | 理想气体参数 | 温度 0–100 °C；压强 1–2 atm | 两个范围受限滑条，实时刷新；等容模式压强由温度计算 |
-| H-04 | 布朗运动 | 大量液体分子撞击花粉粒子，绘制花粉粒子运动轨迹 | 有惯性的二维 Langevin 随机微分方程离散模拟、轨迹图、MSD 图 |
+| H-01 | 理想气体 | `PV=nRT`；封闭空间内分子无规则热运动；温度和压强改变时体积及热运动随之改变 | 七组单变量模块；粒子动画、可变容器宽度、温度决定速度尺度、压强/温度共同决定体积 |
+| H-02 | 理想气体相图 | 依实验显示 P-V、P-T、V-T 关系，并可查看 `(P,V,T)` 状态 | 主图按模块选择 P-V/P-T/V-T；保留 3D P-V-T 相图与理论过程线；两室热交换单独显示温度-时间曲线 |
+| H-03 | 理想气体参数 | 温度 0–100 °C；体积按 V₀ 调节；演示粒子数与物质的量分离 | 每个模块只开放对应控制量；`N_demo` 仅改变画面采样，`n` 保持不变 |
+| H-04 | 布朗运动 | 大量液体分子撞击花粉粒子，绘制花粉粒子运动轨迹 | 显式二维液体分子热运动、两体弹性碰撞、轨迹图、MSD 图 |
 | H-05 | 布朗运动参数 | 花粉粒子质量 0–m0；液体分子数量 1–100 | 质量比滑条和碰撞分子数量滑条；数值端将零质量安全映射为 0.05m0 |
 | H-06 | 麦克斯韦分布 | 固定体积，仅温度变化；大量分子热运动变化；**几率~水平速度曲线** | 固定方盒粒子动画、速率 f(v) 与**水平分量 v_x 高斯分布双图**（理论曲线 + 样本直方图）、三种特征速度 |
 | H-07 | 麦克斯韦参数 | 温度 0–100 °C | 范围受限滑条 |
@@ -69,8 +69,8 @@ lang: zh-CN
 原始文档并未给出：气体种类、物质的量、容器实际几何尺寸、布朗流体温度、黏度、花粉粒子半径、`m0` 的绝对值、伽尔顿板钉排数和左右偏转概率。科学计算程序不能把这些未给出的量伪装成原始要求，因此实现采用以下可审计假设：
 
 - 气体默认视为氮气，用于赋予分子质量和 m/s 速度量纲；理想气体宏观状态取 `n=1.0e-3 mol`，只影响显示的升数，不改变规律；
-- 布朗运动采用无量纲单位，设阻尼 `gamma=1`、热能 `theta=1`，故长期理论扩散常数 `D=theta/gamma=1`；
-- `m=0` 会使 Langevin 方程中加速度项奇异，UI 的“0”端点在模型内解释为 `0.05m0`，界面和文档均提示；
+- 布朗运动采用显式无量纲单位，液体热能 `theta=0.02`；液体分子用 OU 热浴维持速率尺度，花粉只在真实接触时按两体弹性碰撞交换动量；`D=theta/gamma` 保留为连续介质参考值，碰撞轨迹不再叠加独立 Langevin 随机力；
+- `m=0` 会使两体碰撞中的质量比奇异，UI 的“0”端点在模型内解释为 `0.05m0`，界面和文档均提示；
 - 伽尔顿板固定 12 排，左右概率均为 0.5，理论落槽位置服从 `Binomial(12, 0.5)`。
 
 # 2. 技术路线与开源参考核查
@@ -166,8 +166,9 @@ heat_sciviz/
 | 类/数据类 | 主要状态 | 主要方法 | 不负责的内容 |
 |---|---|---|---|
 | `RandomManager` | `seed` | `stream(name)` | 不存 GUI 状态，不做密码学随机 |
-| `IdealGasState` | T、P、n、粒子数、分子质量 | K/Pa/体积等属性 | 不更新粒子位置 |
-| `IdealGasModel` | 位置、速度、P-V-T 历史 | `set_conditions`、`step`、`kinetic_pressure_pa`、`reset` | 不创建图形控件 |
+| `IdealGasState` | T、n、V、粒子数、分子质量 | K/Pa/体积等属性；P 由 `PV=nRT` 派生 | 不更新粒子位置 |
+| `IdealGasModel` | 位置、速度、P-V-T 历史、过程能量 | `configure_experiment`、过程线、`step`、`kinetic_pressure_pa`、`reset` | 不创建图形控件 |
+| `HeatExchangeState/Model` | 两室 T、V、n、隔板、热交换历史 | `configure`、`step`、温度/热流率读数、`reset` | 不创建图形控件 |
 | `BrownianParameters` | 质量比、分子数、阻尼、热能、dt | `effective_mass`、`theoretical_diffusion` | 不保存轨迹 |
 | `BrownianModel` | 位置、速度、轨迹、时间 | `step`、`msd_curve`、`empirical_diffusion`、`ensemble_diffusion_estimate` | 不决定 UI 刷新频率 |
 | `MaxwellState` | T、分子质量、粒子数 | `temperature_k`、`scale` | 不生成图 |
@@ -256,7 +257,33 @@ P_kinetic = N_physical * m * mean(v_x^2) / V
 
 这使界面不仅展示状态方程，还能用随机分子速度估计宏观压强。
 
-## 5.2 `IdealGasModel` 接口
+## 5.2 文档新增的七组实验模块
+
+Web 与 PySide6 使用同一组模式 ID；每组只开放一个核心控制量，固定量在控制区显示为只读说明：
+
+| 模式 ID | 可调量 | 主要读数/关系 |
+|---|---|---|
+| `temperature-micro` | 温度 `T` | 压强 `P`、单分子平均平动动能 `ε̄_T=3k_BT/2` |
+| `pressure-micro` | 体积 `V/V₀` | 压强 `P`、动量通量估计和平均/均方根速率 |
+| `isothermal` | 体积 `V/V₀` | `P-V` 图，`PV=常量` |
+| `isochoric` | 温度 `T` | `P-T` 图，`P/T_K=常量` |
+| `isobaric` | 温度 `T` | `V-T` 图，`V/T_K=常量`，默认 `P=1 atm` |
+| `heat-exchange` | 两侧温度与隔板类型 | 两室温度-时间图、热流率、累计传热；粒子不跨隔板 |
+| `first-law` | 体积 `V/V₀` | `Q`、`ΔU`、气体对外做功 `W_by`，并显示绝热理论线 |
+
+理想气体状态只保留 `T`、`n`、`V` 作为独立状态量，`P=nRT/V` 始终派生，避免同时写入 `T/P/V` 造成不一致。`n` 是物质的量，`N_demo` 是画面采样数，`N_physical=nN_A` 只用于动量通量估计。两室模型使用等体积、等物质的量的氮气双原子近似，导热时显式守恒两室总内能；固定热导率是教学显示近似，不宣称为完整传热方程。
+
+第一定律采用“气体对外做功为正”的约定：
+
+```text
+δQ = dU + P dV
+Q = 0,  ΔU + W_by = 0
+PV^γ = 常量,  TV^(γ−1) = 常量,  γ = 1.4
+```
+
+快速改变体积只作为课堂演示，不能把动画速度当成准静态过程；图上理论线仅作为准静态绝热路径参照。
+
+## 5.3 `IdealGasModel` 接口
 
 ```python
 @dataclass(slots=True)
@@ -267,8 +294,14 @@ class IdealGasModel:
     velocities_si: np.ndarray
     phase_history: list[tuple[float, float, float]]
 
+    def configure_experiment(self, mode: str, *, temperature_c: float | None = None,
+                             pressure_atm: float | None = None,
+                             volume_litre: float | None = None,
+                             demo_particle_count: int | None = None) -> None: ...
     def set_conditions(self, temperature_c: float, pressure_atm: float) -> None: ...
     def set_process_mode(self, mode: str) -> None: ...
+    @property
+    def internal_energy_j(self) -> float: ...
     def isotherm_line(self) -> tuple[np.ndarray, np.ndarray]: ...
     def isobar_line(self) -> tuple[np.ndarray, np.ndarray]: ...
     def isochore_line(self) -> tuple[np.ndarray, np.ndarray]: ...
@@ -277,71 +310,87 @@ class IdealGasModel:
     def kinetic_pressure_pa(self) -> float: ...
     def resample_velocities(self) -> None: ...
     def reset(self) -> None: ...
+
+
+@dataclass(slots=True)
+class HeatExchangeModel:
+    state: HeatExchangeState
+
+    def configure(self, *, barrier: str | None = None, ...): ...
+    def step(self, dt: float = 0.020) -> None: ...
 ```
 
-`set_process_mode` 支持 `free` / `isothermal` / `isobaric` / `isochoric`，切换时锁定当前 T/P/V 作为约束锚点：
+`configure_experiment` 是文档新增七组实验的统一入口；`set_process_mode` 仍保留给旧调用方。七组模式分别是温度微观、压强微观、等温、等容、等压、两室热交换和第一定律。单室模式切换时锁定当前 T/P/V 作为约束锚点：
 
-- 等温：温度锁定为等温线温度，拖动 P 执行压缩/膨胀，拖动 T 更换等温线；
-- 等压：压强锁定为等压线压强，拖动 T 加热/冷却，拖动 P 更换等压线；
-- 等容：体积锁定，温度驱动压强 `P=nRT/V`（UI 中压强滑条显示计算值并禁用）。
+- 温度微观/等容：体积固定，拖动 T 改变速度尺度和由状态方程得到的 P；
+- 压强微观/等温：T 固定，拖动 `V/V₀` 改变容积和 P；
+- 等压：P 固定为默认 `1 atm`，拖动 T 同时改变 V；
+- 第一律：以进入该模式时的状态为绝热基准，拖动 `V/V₀`，按 `γ=1.4` 计算 T、P、`ΔU` 和气体对外做功；
+- 两室热交换：左右粒子保留在各自等体积腔室，隔板为隔热或导热；导热时按两室内能守恒更新温度。
 
-## 5.3 UI 与刷新流程
+## 5.4 UI 与刷新流程
 
-1. 温度滑条范围 0–100 °C；压强滑条范围 1–2 atm；
-2. 过程模式按钮组（自由/等温/等压/等容）切换约束；等容下压强由温度计算回写；
-3. 任意滑条变化调用 `set_conditions()`；
+1. 七组实验按钮只显示本组核心控制量：温度微观/等容/等压调 T，压强微观/等温/第一律调 `V/V₀`，两室调左右初温与隔板；演示粒子数 `N_demo` 独立于物质的量 `n`；
+2. 温度范围 0–100 °C；单室 `V/V₀` 范围通常 0.5–3，第一律为 0.2–5；两室初温范围 0–100 °C；
+3. 参数变化调用 `configure_experiment()` 或 `HeatExchangeModel.configure()`，只更新相关模块；布朗运动质量/液体分子数变化会重置轨迹统计，避免把不同条件混入同一条 MSD 曲线；
 4. `QTimer` / Web `requestAnimationFrame` 周期调用 `step()`；
 5. 场景为 3D 盒体：桌面用 Matplotlib 3D 散点（`_offsets3d` 逐帧更新 + 盒体 12 条棱），Web 用 Canvas 等轴投影；粒子按速率着色；显示速度系数 1.5（仅观感，不影响物理）；
 6. 状态变化追加到最多 240 个 P-V-T 历史点；
-7. **相图为 3D P-V-T 相图**（Plotly：可旋转、滚轮缩放、悬停坐标，给出 `(P,V,T)` 坐标值）+ **P-V / P-T / V-T 平面图**（等温线族/等容线族/等压线族），过程模式激活时叠加理论过程线（虚线）；桌面与 Web 各图可全屏放大；
-8. 指标区显示 T、P、物理 V 和随机动能论估计；场景角标、参数说明与专题弹窗均提示“相对显示体积”边界；
+7. 单室实验显示与模块一一对应的 P-T、V-T 或 P-V 主图，并保留可展开的 3D P-V-T 坐标图；第一律叠加准静态绝热线；两室实验切换为温度-时间图，不复用无关坐标；
+8. 指标区显示本实验需要的 T、P、物理 V、平均能量、速率、热量、内能和功；场景角标、参数说明与专题弹窗均提示“相对显示体积”边界；
 9. Web 端服务层对相图几何做**签名缓存**，3D 相图 + 平面图每 4 帧重绘一次，粒子场景保持每帧。
 
-## 5.4 验证点
+## 5.5 验证点
 
 - 数值恒等：`P*V` 与 `n*R*T` 相对误差小于 `1e-13`；
-- 单调性：定压升温使体积增大，定温增压使体积减小；
-- 统计性：大量速度样本得到的动能论压强与目标压强在容许误差内；
-- 动画边界：所有粒子保持在当前盒子内。
+- 七组控制：固定量不随无关滑条联动，等温满足 `PV=常量`，等容满足 `P/T_K=常量`，等压满足 `V/T_K=常量`；
+- 第一律：绝热时 `Q=0`、`ΔU+W_by=0`，并满足 `PV^γ=常量`；
+- 两室：导热方向由高温侧指向低温侧，总内能守恒且不越过平衡点，隔热时温度不变；
+- 统计性与边界：动能论压强与目标压强在容许误差内，所有粒子保持在所属盒子内。
 
 # 6. 专题二：布朗运动与扩散常数
 
-## 6.1 采用 Langevin 模型的原因
+## 6.1 显式液体分子模型
 
-仅用“每步位置加一个高斯数”的普通随机游走无法体现花粉质量参数。为使原文“花粉粒子质量”真正进入算法，本实现使用有惯性的 Langevin 方程：
+原文要求展示“大量液体分子撞击花粉粒子”。如果同时绘制液体分子、又给花粉施加与接触无关的随机冲量，会让一个远处的单分子也能瞬时推动花粉，破坏碰撞图景。因此轨迹采用显式溶剂模型：
 
 ```text
-m dv = -gamma v dt + sqrt(2 gamma theta) dW
+m_liquid dv_liquid = OU 热浴 + 墙面/分子碰撞
+m_pollen dv_pollen = 碰撞冲量
 dx = v dt
 ```
 
-其中 `theta` 表示无量纲热能。长期极限的二维均方位移满足：
+液体分子的 OU 热浴只作用于液体层，使其保持温度对应的二维 Maxwell 速率尺度。实现使用精确 OU 更新，而不是 Euler 近似后再人为截断高速尾部；花粉的速度只在真实接触时改变；对法向相对速度 `v_rel,n<0` 的液体–花粉接触，使用两体弹性冲量：
+
+```text
+J = -2 * v_rel,n / (1/m_liquid + 1/m_pollen)
+v_liquid += (J/m_liquid) * n
+v_pollen -= (J/m_pollen) * n
+```
+
+碰撞后的重叠按质量比例分离，避免把花粉固定在原位，也保持接触对的质心位置。这样 n=1 时花粉在无接触期间保持原有状态，只有液体分子真正撞上它才发生位移。
+
+连续介质 Langevin 极限的二维均方位移仍作为参考关系展示：
 
 ```text
 MSD(t) = E(|x(t)-x(0)|^2) ≈ 4 D t
 D = theta / gamma
 ```
 
-质量主要改变短时间惯性与轨迹平滑程度；长期扩散常数在该模型中由热能和阻尼决定。这一分工比把“质量”直接乘到随机步长上更符合物理结构。
+该 `D` 是连续介质参考量，不作为显式碰撞轨迹的额外随机力；否则会把同一液体热涨落计算两次。质量主要改变两体冲量分配，分子数主要改变实际碰撞频率。
 
 ## 6.2 有限分子碰撞算法
 
-原文要求可调“液体分子数量 1–100”。每个积分子步内生成 `N` 个随机撞击方向：
+原文要求可调“液体分子数量 1–100”。每个积分子步先推进液体分子的 OU 热运动和墙面反弹，再处理液体–液体、液体–花粉的硬球接触：
 
 ```text
-u_i = (cos(phi_i), sin(phi_i)), phi_i ~ Uniform(0, 2pi)
-xi_N = sqrt(2) * sum(u_i) / sqrt(N)
+v_liquid <- exact_OU(v_liquid, theta, dt)
+x_liquid <- x_liquid + v_liquid * dt
+elastic_collision(liquid, liquid)
+elastic_collision(liquid, pollen)
 ```
 
-`1/sqrt(N)` 归一化保持总体噪声方差不随滑条错误增大；`N` 增大时，合成冲量因中心极限定理趋近高斯，同时小 `N` 保留更明显的离散碰撞感。
-
-Euler–Maruyama 风格更新：
-
-```python
-velocity += -(gamma / m) * velocity * dt \
-            + sqrt(2 * gamma * theta * dt) / m * kick
-position += velocity * dt
-```
+液体分子数只改变显式溶剂的密度和碰撞频率，不直接乘到花粉的随机力上；因此 n=1 是稀疏、间歇的碰撞过程，而不是每个时间步都被一个分子“远程推”动。
 
 ## 6.3 零质量处理
 
@@ -563,7 +612,7 @@ PYTHONPATH=src python -m heatlab.validation --output-dir validation_output
 |---|---|
 | `test_randomness.py` | 同 seed/同名称完全复现；不同名称流不相同 |
 | `test_ideal_gas.py` | 状态方程、体积单调性、微观压强统计一致性、3D 过程线 / PV=nRT 曲面网格、平面等值线族 |
-| `test_brownian.py` | 轨迹复现、系综扩散常数收敛、液体分子留在盒内、与花粉不重叠、硬球碰撞触发 |
+| `test_brownian.py` | 轨迹复现、系综扩散常数收敛、液体分子留在盒内、液体/花粉不重叠、单分子无接触不推动花粉、碰撞动量/能量守恒、硬球碰撞触发、单分子速率图可用 |
 | `test_maxwell.py` | PDF 归一化、样本均速、特征速度顺序、分量分布 |
 | `test_galton.py` | 路径复现、大样本二项矩、概率和为 1 |
 
@@ -574,7 +623,7 @@ PYTHONPATH=src python -m heatlab.validation --output-dir validation_output
 | 理想气体目标压强 | 1.600000 atm | 设定值 |
 | 动能论估计压强 | 1.599746 atm | 与目标高度一致 |
 | 相对误差 | 0.000159 | 远小于 2.5% 测试阈值 |
-| Brownian 理论 D | 1.000000 | 无量纲模型基准 |
+| Brownian 连续介质参考 D | 1.000000 | 独立 Langevin 基准模型 |
 | 单轨迹估计 D | 1.159666 | 单轨迹波动，供教学显示 |
 | 2000 条系综估计 D | 0.944797 | 在 12% 相对容差内 |
 | 布朗液体碰撞计数 | >0（100 分子 × 80 步） | 硬球碰撞已触发 |
@@ -720,15 +769,21 @@ mypy src
 - [x] IG-09 微观动能论压强与宏观压强统计一致。
 - [x] IG-10 Web 端拖动滑条时动画与三维图实时顺畅刷新（相图几何缓存 + 每 4 帧重绘）。
 - [x] IG-11 P-V / P-T / V-T 平面图（等温/等容/等压线族）与 3D 相图同屏。
+- [x] IG-12 按文档拆分七组实验，控制量与读数一一对应；无关控制不出现在当前模块。
+- [x] IG-13 `N_demo` 与物质的量 `n` 分离，界面同时说明演示采样数和物理分子数含义。
+- [x] IG-14 两室热交换支持隔热/导热隔板、温度-时间曲线、热流率和累计传热。
+- [x] IG-15 导热更新显式守恒两室总内能，传热方向正确且温度不越过平衡点。
+- [x] IG-16 第一律模块显示 `Q`、`ΔU`、`W_by`，绝热理论线使用双原子气体 `γ=1.4`。
+- [x] IG-17 Web 与 PySide6 复用相同模式 ID 和模型约束，避免两套物理规则漂移。
 
 ## 13.3 布朗运动
 
-- [x] BM-01 随机冲量由多分子撞击方向合成。
+- [x] BM-01 液体分子显式热运动，并在真实接触时向花粉传递碰撞冲量。
 - [x] BM-02 花粉粒子轨迹连续绘制。
-- [x] BM-03 质量参数进入 Langevin 惯性项。
+- [x] BM-03 质量参数进入液体–花粉两体碰撞的冲量分配。
 - [x] BM-04 分子数量范围 1–100。
 - [x] BM-05 原文零质量端点具有明确安全处理，不发生除零。
-- [x] BM-06 显示 MSD 与理论 `4Dt` 对照。
+- [x] BM-06 显示 MSD 与连续介质参考 `4Dt` 对照。
 - [x] BM-07 输出单轨迹扩散常数估计。
 - [x] BM-08 系综验证的 D 在预设统计容差内。
 - [x] BM-09 质量和分子数拖动后轨迹表现实时更新（Web 端已验证）。
@@ -846,10 +901,11 @@ on timer:
 
 ```text
 for each substep:
-    angles <- N uniforms in [0,2pi)
-    kick <- sqrt(2) * sum((cos, sin)) / sqrt(N)
-    v <- v - gamma/m*v*dt + sqrt(2*gamma*theta*dt)/m*kick
-    x <- x + v*dt
+    liquid_v <- exact_OU(liquid_v, theta, dt)
+    liquid_x <- liquid_x + liquid_v*dt
+    elastic_collision(liquid, liquid)
+    pollen_x <- pollen_x + pollen_v*dt
+    elastic_collision(liquid, pollen)
 append x to path
 ```
 

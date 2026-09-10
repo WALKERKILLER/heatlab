@@ -5,7 +5,13 @@ from __future__ import annotations
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
 
 from heatlab.constants import DEFAULT_SEED
-from heatlab.models import BrownianModel, GaltonModel, IdealGasModel, MaxwellModel
+from heatlab.models import (
+    BrownianModel,
+    GaltonModel,
+    HeatExchangeModel,
+    IdealGasModel,
+    MaxwellModel,
+)
 from heatlab.randomness import RandomManager
 from heatlab.ui.brownian_tab import BrownianTab
 from heatlab.ui.common import StatusBar, TopBar
@@ -45,7 +51,10 @@ def build_topic_widget(topic: str, seed: int) -> QWidget:
     stream_name = TOPIC_SPECS[topic]["stream"]
     rng = manager.stream(stream_name)
     if topic == "ideal-gas":
-        return IdealGasTab(IdealGasModel(rng))
+        return IdealGasTab(
+            IdealGasModel(rng),
+            HeatExchangeModel(manager.stream("ideal-gas-heat-exchange")),
+        )
     if topic == "brownian":
         return BrownianTab(BrownianModel(rng))
     if topic == "maxwell":

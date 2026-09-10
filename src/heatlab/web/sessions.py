@@ -11,7 +11,13 @@ import numpy as np
 from scipy.stats import binom
 
 from heatlab.constants import DEFAULT_SEED, STANDARD_ATMOSPHERE
-from heatlab.models import BrownianModel, GaltonModel, IdealGasModel, MaxwellModel
+from heatlab.models import (
+    BrownianModel,
+    GaltonModel,
+    HeatExchangeModel,
+    IdealGasModel,
+    MaxwellModel,
+)
 from heatlab.randomness import RandomManager
 
 
@@ -27,9 +33,12 @@ def _liquid_speed_distribution_payload(
 ) -> dict[str, Any]:
     """2-D Maxwell-Boltzmann histogram (f(v)=v/σ²·exp(-v²/2σ²)) for liquids."""
 
-    if len(speeds) < 4 or sigma <= 0.0:
+    if len(speeds) == 0 or sigma <= 0.0:
         return {"speed_hist_v": [], "speed_hist_f": [], "speed_theory_v": [], "speed_theory_f": []}
-    hist_counts, bin_edges = np.histogram(speeds, bins=bins, density=True)
+    # Keep the 1–100 UI range useful: a single molecule still has a valid
+    # speed sample, so use a fixed positive range instead of dropping it.
+    upper = max(3.0 * sigma, float(np.max(speeds)) * 1.1)
+    hist_counts, bin_edges = np.histogram(speeds, bins=bins, range=(0.0, upper), density=True)
     bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
     theory_v = np.linspace(0.0, float(bin_edges[-1]), 120)
     theory_f = (theory_v / sigma**2) * np.exp(-(theory_v**2) / (2.0 * sigma**2))
@@ -48,6 +57,8 @@ class LiveSession:
     seed: int
     session_id: str = field(default_factory=lambda: uuid4().hex)
     ideal: IdealGasModel = field(init=False)
+    heat_exchange: HeatExchangeModel = field(init=False)
+    ideal_experiment_mode: str = field(default="free", init=False)
     brownian: BrownianModel = field(init=False)
     maxwell: MaxwellModel = field(init=False)
     galton: GaltonModel = field(init=False)
@@ -71,6 +82,8 @@ class LiveSession:
             self.seed = int(seed)
         manager = RandomManager(self.seed)
         self.ideal = IdealGasModel(manager.stream("ideal-gas"))
+        self.heat_exchange = HeatExchangeModel(manager.stream("ideal-gas-heat-exchange"))
+        self.ideal_experiment_mode = "free"
         self.brownian = BrownianModel(manager.stream("brownian"))
         self.maxwell = MaxwellModel(manager.stream("maxwell"))
         self.galton = GaltonModel(manager.stream("galton"))
@@ -86,27 +99,65 @@ class LiveSession:
     # ---- ideal gas ----
     def set_ideal(
         self,
-        temperature_c: float,
+        temperature_c: float | None,
         pressure_atm: float,
         process_mode: str | None = None,
+        *,
+        experiment_mode: str | None = None,
+        volume_litre: float | None = None,
+        demo_particle_count: int | None = None,
+        barrier: str | None = None,
+        temperature_left_c: float | None = None,
+        temperature_right_c: float | None = None,
     ) -> None:
-        if process_mode is not None and process_mode != self.ideal.state.process_mode:
-            self.ideal.set_process_mode(process_mode)
-        self.ideal.set_conditions(temperature_c, pressure_atm)
+        mode = experiment_mode or process_mode or self.ideal_experiment_mode
+        if mode == "heat-exchange":
+            self.heat_exchange.configure(
+                barrier=barrier,
+                temperature_left_c=temperature_left_c,
+                temperature_right_c=temperature_right_c,
+                demo_particle_count=demo_particle_count,
+            )
+            self.ideal.experiment_mode = "heat-exchange"
+            self.ideal.work_by_gas_j = 0.0
+            self.ideal.heat_added_j = 0.0
+            self.ideal_experiment_mode = mode
+            return
+        self.ideal_experiment_mode = mode
+        if mode in IdealGasModel.SINGLE_EXPERIMENTS:
+            self.ideal.configure_experiment(
+                mode,
+                temperature_c=temperature_c,
+                pressure_atm=pressure_atm,
+                volume_litre=volume_litre,
+                demo_particle_count=demo_particle_count,
+            )
+        else:
+            if process_mode is not None and process_mode != self.ideal.state.process_mode:
+                self.ideal.set_process_mode(process_mode)
+            self.ideal.set_conditions(
+                self.ideal.state.temperature_c if temperature_c is None else temperature_c,
+                pressure_atm,
+            )
 
     def step_ideal(self, steps: int = 1) -> dict[str, Any]:
         for _ in range(max(1, steps)):
-            self.ideal.step()
+            if self.ideal_experiment_mode == "heat-exchange":
+                self.heat_exchange.step()
+            else:
+                self.ideal.step()
         return self.snapshot_ideal()
 
     def snapshot_ideal(self) -> dict[str, Any]:
+        if self.ideal_experiment_mode == "heat-exchange":
+            return self._snapshot_heat_exchange()
         state = self.ideal.state
         history = np.asarray(self.ideal.phase_history, dtype=float)
         kinetic_atm = float(self.ideal.kinetic_pressure_pa() / STANDARD_ATMOSPHERE)
         # 相图几何（曲面/等值线族/过程线）只随宏观状态变化：
         # 粒子每帧 step 时状态不变 → 直接复用缓存，避免每帧重算大数组。
         signature = (
-            f"{state.process_mode}|{state.temperature_c:.1f}|"
+            f"{self.ideal_experiment_mode}|{state.process_mode}|{state.temperature_c:.1f}|"
             f"{state.pressure_atm:.3f}|{state.volume_litre:.4f}"
         )
         if signature != self._ideal_geometry_signature:
@@ -119,11 +170,39 @@ class LiveSession:
         process_line_3d = self._ideal_process_line_3d
         surface_p, surface_v, surface_t = self._ideal_surface
         planar = self._ideal_planar
+        is_energy_mode = self.ideal_experiment_mode in ("adiabatic", "first-law")
+        delta_u = self.ideal.internal_energy_j - self.ideal.adiabatic_initial_internal_energy_j
+        heat_added_j = self.ideal.heat_added_j if is_energy_mode else 0.0
+        work_by_gas_j = self.ideal.work_by_gas_j if is_energy_mode else 0.0
+        observables = {
+            "pressure_pa": state.pressure_pa,
+            "pressure_atm": state.pressure_atm,
+            "volume_m3": state.volume_m3,
+            "volume_litre": state.volume_litre,
+            "temperature_k": state.temperature_k,
+            "mean_translational_kinetic_energy_j": state.mean_translational_kinetic_energy_j,
+            "mean_speed_mps": self.ideal.mean_speed_mps,
+            "rms_speed_mps": self.ideal.rms_speed_mps,
+            "kinetic_pressure_pa": self.ideal.kinetic_pressure_pa(),
+            "kinetic_pressure_atm": kinetic_atm,
+            "internal_energy_j": self.ideal.internal_energy_j,
+            "heat_added_j": heat_added_j,
+            "work_by_gas_j": work_by_gas_j,
+            "delta_internal_energy_j": delta_u if is_energy_mode else 0.0,
+            "first_law_residual_j": (
+                heat_added_j - delta_u - work_by_gas_j
+                if is_energy_mode
+                else 0.0
+            ),
+        }
         return {
+            "experiment_mode": self.ideal_experiment_mode,
             "temperature_c": state.temperature_c,
             "pressure_atm": state.pressure_atm,
             "temperature_k": state.temperature_k,
             "volume_litre": state.volume_litre,
+            "reference_volume_litre": self.ideal.reference_volume_litre,
+            "adiabatic_reference_volume_litre": self.ideal.adiabatic_reference_volume_litre,
             "box_width": self.ideal.box_width,
             "box_length": self.ideal.box_length,
             "box_height": self.ideal.box_height,
@@ -134,6 +213,25 @@ class LiveSession:
             # Macroscopic PV=nRT path (grows when user moves sliders)
             "phase_history": _to_list(history),
             "process_mode": state.process_mode,
+            "observables": observables,
+            "scene": {
+                "kind": "single-chamber",
+                "positions": _to_list(self.ideal.display_positions),
+                "speeds": _to_list(self.ideal.speeds),
+                "box": [self.ideal.box_length, self.ideal.box_height, self.ideal.box_depth],
+            },
+            "chart": {
+                "kind": {
+                    "temperature-micro": "p-t",
+                    "pressure-micro": "p-v",
+                    "isothermal": "p-v",
+                    "isochoric": "p-t",
+                    "isobaric": "v-t",
+                    "adiabatic": "p-v",
+                    "first-law": "p-v",
+                }.get(self.ideal_experiment_mode, "p-v"),
+                "current": [state.pressure_atm, state.volume_litre, state.temperature_k],
+            },
             # Current-mode theoretical line in (P, V); None in free mode
             "process_line": (
                 {"points": _to_list(np.column_stack(process_line))}
@@ -154,6 +252,89 @@ class LiveSession:
             },
             # 大学物理热力学平面图数据（P-V 等温族 / P-T 等容族 / V-T 等压族）
             "planar": planar,
+        }
+
+    def _snapshot_heat_exchange(self) -> dict[str, Any]:
+        model = self.heat_exchange
+        state = model.state
+        left_pressure_atm = state.pressure_left_pa / STANDARD_ATMOSPHERE
+        right_pressure_atm = state.pressure_right_pa / STANDARD_ATMOSPHERE
+        history = np.asarray(model.temperature_history, dtype=float)
+        left = {
+            "temperature_c": state.temperature_left_c,
+            "temperature_k": state.temperature_left_k,
+            "pressure_pa": state.pressure_left_pa,
+            "pressure_atm": left_pressure_atm,
+            "volume_litre": state.volume_each_m3 * 1_000.0,
+            "internal_energy_j": state.internal_energy_left_j,
+            "positions": _to_list(model.positions_left),
+            "speeds": _to_list(model.speeds_left),
+        }
+        right = {
+            "temperature_c": state.temperature_right_c,
+            "temperature_k": state.temperature_right_k,
+            "pressure_pa": state.pressure_right_pa,
+            "pressure_atm": right_pressure_atm,
+            "volume_litre": state.volume_each_m3 * 1_000.0,
+            "internal_energy_j": state.internal_energy_right_j,
+            "positions": _to_list(model.positions_right),
+            "speeds": _to_list(model.speeds_right),
+        }
+        return {
+            "experiment_mode": "heat-exchange",
+            "process_mode": "heat-exchange",
+            "temperature_c": (state.temperature_left_c + state.temperature_right_c) / 2.0,
+            "temperature_k": (state.temperature_left_k + state.temperature_right_k) / 2.0,
+            "pressure_atm": (left_pressure_atm + right_pressure_atm) / 2.0,
+            "volume_litre": 2.0 * state.volume_each_m3 * 1_000.0,
+            "box_width": model.box_width,
+            "box_length": model.box_width,
+            "box_height": model.box_height,
+            "box_depth": model.box_depth,
+            "kinetic_pressure_atm": (
+                model.kinetic_pressure_left_pa() + model.kinetic_pressure_right_pa()
+            ) / (2.0 * STANDARD_ATMOSPHERE),
+            "positions": _to_list(model.positions),
+            "speeds": _to_list(np.concatenate((model.speeds_left, model.speeds_right))),
+            "phase_history": [],
+            "process_line": None,
+            "process_line_3d": None,
+            "pvt_surface": {"x": [], "y": [], "z": []},
+            "planar": {"pv": [], "pt": [], "vt": []},
+            "observables": {
+                "temperature_left_c": state.temperature_left_c,
+                "temperature_right_c": state.temperature_right_c,
+                "temperature_left_k": state.temperature_left_k,
+                "temperature_right_k": state.temperature_right_k,
+                "pressure_left_pa": state.pressure_left_pa,
+                "pressure_right_pa": state.pressure_right_pa,
+                "pressure_left_atm": left_pressure_atm,
+                "pressure_right_atm": right_pressure_atm,
+                "mean_pressure_atm": (left_pressure_atm + right_pressure_atm) / 2.0,
+                "kinetic_pressure_left_atm": model.kinetic_pressure_left_pa() / STANDARD_ATMOSPHERE,
+                "kinetic_pressure_right_atm": model.kinetic_pressure_right_pa() / STANDARD_ATMOSPHERE,
+                "volume_each_m3": state.volume_each_m3,
+                "heat_rate_w": model.heat_rate_w,
+                "heat_transferred_j": model.heat_transferred_j,
+                "internal_energy_left_j": state.internal_energy_left_j,
+                "internal_energy_right_j": state.internal_energy_right_j,
+                "internal_energy_total_j": state.internal_energy_left_j + state.internal_energy_right_j,
+            },
+            "scene": {
+                "kind": "two-chamber",
+                "divider": state.barrier,
+                "divider_x": 0.5,
+                "left": left,
+                "right": right,
+                "box": [model.box_width, model.box_height, model.box_depth],
+            },
+            "chart": {
+                "kind": "temperature-time",
+                "points": _to_list(history),
+            },
+            "chambers": {"left": left, "right": right},
+            "barrier": state.barrier,
+            "elapsed_s": model.elapsed_s,
         }
 
     # ---- brownian ----

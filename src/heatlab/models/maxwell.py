@@ -11,11 +11,32 @@ from scipy.stats import maxwell, norm
 from heatlab.constants import BOLTZMANN, CELSIUS_OFFSET, NITROGEN_MOLECULE_MASS_KG
 
 
+def _reflect_unit_interval(
+    positions: np.ndarray,
+    velocities: np.ndarray,
+    axis: int,
+) -> None:
+    """Reflect particles in [0, 1], including multiple wall crossings."""
+    raw = positions[:, axis]
+    folded = np.mod(raw, 2.0)
+    positions[:, axis] = np.where(folded <= 1.0, folded, 2.0 - folded)
+    crossed_odd_times = np.mod(np.floor(raw), 2.0) != 0.0
+    velocities[crossed_odd_times, axis] *= -1.0
+
+
 @dataclass(slots=True)
 class MaxwellState:
     temperature_c: float = 20.0
     molecule_mass_kg: float = NITROGEN_MOLECULE_MASS_KG
     particle_count: int = 180
+
+    def __post_init__(self) -> None:
+        if not np.isfinite(self.temperature_c) or self.temperature_c <= -CELSIUS_OFFSET:
+            raise ValueError("temperature_c must be finite and above absolute zero")
+        if not np.isfinite(self.molecule_mass_kg) or self.molecule_mass_kg <= 0.0:
+            raise ValueError("molecule_mass_kg must be finite and positive")
+        if not isinstance(self.particle_count, (int, np.integer)) or self.particle_count <= 0:
+            raise ValueError("particle_count must be a positive integer")
 
     @property
     def temperature_k(self) -> float:
@@ -41,6 +62,8 @@ class MaxwellModel:
         return self.rng.normal(0.0, self.state.scale, size=(count, 3))
 
     def set_temperature(self, temperature_c: float) -> None:
+        if not np.isfinite(temperature_c):
+            raise ValueError("temperature_c must be finite")
         old_k = self.state.temperature_k
         self.state.temperature_c = float(np.clip(temperature_c, 0.0, 100.0))
         self.velocities_si *= np.sqrt(self.state.temperature_k / old_k)
@@ -57,16 +80,11 @@ class MaxwellModel:
         return self.velocities_si[:, :2] / max(rms, np.finfo(float).tiny) * 1.5
 
     def step(self, dt: float = 0.020) -> None:
+        if not np.isfinite(dt) or dt <= 0.0:
+            raise ValueError("dt must be finite and positive")
         self.positions += self.display_velocities * dt
         for axis in (0, 1):
-            low = self.positions[:, axis] < 0.0
-            high = self.positions[:, axis] > 1.0
-            if np.any(low):
-                self.positions[low, axis] *= -1.0
-                self.velocities_si[low, axis] *= -1.0
-            if np.any(high):
-                self.positions[high, axis] = 2.0 - self.positions[high, axis]
-                self.velocities_si[high, axis] *= -1.0
+            _reflect_unit_interval(self.positions, self.velocities_si, axis)
 
     def distribution_curve(self, points: int = 500) -> tuple[np.ndarray, np.ndarray]:
         vmax = maxwell.ppf(0.999999, scale=self.state.scale)

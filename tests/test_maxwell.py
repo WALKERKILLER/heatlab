@@ -37,3 +37,17 @@ def test_sampled_components_match_gaussian_moments() -> None:
     assert np.isclose(sample.mean(), 0.0, atol=3.0)
     assert np.isclose(sample.var(), model.state.scale**2, rtol=0.01)
 
+
+def test_large_time_step_reflection_keeps_particles_in_box() -> None:
+    model = MaxwellModel(RandomManager(26).stream("maxwell"))
+    model.step(dt=2.0)
+    assert np.all(model.positions >= 0.0)
+    assert np.all(model.positions <= 1.0)
+
+
+def test_invalid_temperature_and_time_step_are_rejected() -> None:
+    model = MaxwellModel(RandomManager(27).stream("maxwell"))
+    with np.testing.assert_raises(ValueError):
+        model.set_temperature(np.inf)
+    with np.testing.assert_raises(ValueError):
+        model.step(dt=0.0)

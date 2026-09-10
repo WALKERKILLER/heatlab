@@ -5,7 +5,13 @@ from __future__ import annotations
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget
 
 from heatlab.constants import DEFAULT_SEED
-from heatlab.models import BrownianModel, GaltonModel, IdealGasModel, MaxwellModel
+from heatlab.models import (
+    BrownianModel,
+    GaltonModel,
+    HeatExchangeModel,
+    IdealGasModel,
+    MaxwellModel,
+)
 from heatlab.randomness import RandomManager
 from heatlab.ui.brownian_tab import BrownianTab
 from heatlab.ui.common import StatusBar, TopBar
@@ -53,7 +59,13 @@ class MainWindow(QMainWindow):
             widget.deleteLater()
 
         manager = RandomManager(seed)
-        self.tabs.addTab(IdealGasTab(IdealGasModel(manager.stream("ideal-gas"))), "热力学")
+        self.tabs.addTab(
+            IdealGasTab(
+                IdealGasModel(manager.stream("ideal-gas")),
+                HeatExchangeModel(manager.stream("ideal-gas-heat-exchange")),
+            ),
+            "热力学",
+        )
         self.tabs.addTab(BrownianTab(BrownianModel(manager.stream("brownian"))), "布朗运动")
         self.tabs.addTab(MaxwellTab(MaxwellModel(manager.stream("maxwell"))), "麦克斯韦分布")
         self.tabs.addTab(GaltonTab(GaltonModel(manager.stream("galton"))), "伽尔顿板")

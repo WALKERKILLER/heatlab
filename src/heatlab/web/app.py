@@ -5,14 +5,24 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, abort, jsonify, render_template, request
 
 from heatlab.constants import DEFAULT_SEED
 from heatlab.web import services
 from heatlab.web.sessions import STORE
 
+TOPIC_PAGES: dict[str, dict[str, str]] = {
+    "ideal-gas": {"label": "热力学", "title": "HeatLab · 热力学"},
+    "brownian": {"label": "布朗运动", "title": "HeatLab · 布朗运动"},
+    "maxwell": {"label": "麦克斯韦分布", "title": "HeatLab · 麦克斯韦分布"},
+    "galton": {"label": "伽尔顿板", "title": "HeatLab · 伽尔顿板"},
+}
 
-def create_app() -> Flask:
+
+def create_app(topic: str | None = None) -> Flask:
+    """Create the browser app, optionally locked to one standalone topic."""
+    if topic is not None and topic not in TOPIC_PAGES:
+        raise ValueError(f"unknown topic: {topic}")
     package_dir = Path(__file__).resolve().parent
     app = Flask(
         __name__,
@@ -23,7 +33,32 @@ def create_app() -> Flask:
 
     @app.get("/")
     def index():
-        return render_template("index.html", default_seed=DEFAULT_SEED)
+        selected_topic = topic or "ideal-gas"
+        page = TOPIC_PAGES[selected_topic]
+        return render_template(
+            "index.html",
+            default_seed=DEFAULT_SEED,
+            default_topic=selected_topic,
+            standalone=topic is not None,
+            has_overview=topic is None,
+            page_title=page["title"] if topic is not None else "HeatLab · Live Workbench",
+        )
+
+    @app.get("/topic/<topic_id>")
+    def standalone_topic(topic_id: str):
+        if topic_id not in TOPIC_PAGES:
+            abort(404)
+        if topic is not None and topic_id != topic:
+            abort(404)
+        page = TOPIC_PAGES[topic_id]
+        return render_template(
+            "index.html",
+            default_seed=DEFAULT_SEED,
+            default_topic=topic_id,
+            standalone=True,
+            has_overview=True,
+            page_title=page["title"],
+        )
 
     @app.get("/api/health")
     def health():
@@ -61,13 +96,40 @@ def create_app() -> Flask:
     @app.post("/api/live/ideal-gas/set")
     def live_ideal_set():
         session, payload = _session_from_request()
-        with session.lock:
-            session.set_ideal(
-                float(payload.get("temperature_c", 20.0)),
-                float(payload.get("pressure_atm", 1.0)),
-                process_mode=payload.get("process_mode"),
-            )
-            data = session.snapshot_ideal()
+        try:
+            with session.lock:
+                session.set_ideal(
+                    float(payload["temperature_c"])
+                    if payload.get("temperature_c") is not None
+                    else None,
+                    float(payload.get("pressure_atm", 1.0)),
+                    process_mode=payload.get("process_mode"),
+                    experiment_mode=payload.get("experiment_mode"),
+                    volume_litre=(
+                        float(payload["volume_litre"])
+                        if payload.get("volume_litre") is not None
+                        else None
+                    ),
+                    demo_particle_count=(
+                        int(payload["demo_particle_count"])
+                        if payload.get("demo_particle_count") is not None
+                        else None
+                    ),
+                    barrier=payload.get("barrier"),
+                    temperature_left_c=(
+                        float(payload["temperature_left_c"])
+                        if payload.get("temperature_left_c") is not None
+                        else None
+                    ),
+                    temperature_right_c=(
+                        float(payload["temperature_right_c"])
+                        if payload.get("temperature_right_c") is not None
+                        else None
+                    ),
+                )
+                data = session.snapshot_ideal()
+        except (TypeError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 400
         return jsonify({"session_id": session.session_id, "data": data})
 
     @app.post("/api/live/ideal-gas/step")
@@ -82,12 +144,15 @@ def create_app() -> Flask:
     @app.post("/api/live/brownian/set")
     def live_brownian_set():
         session, payload = _session_from_request()
-        with session.lock:
-            session.set_brownian(
-                float(payload.get("mass_ratio", 0.5)),
-                int(payload.get("molecule_count", 40)),
-            )
-            data = session.snapshot_brownian()
+        try:
+            with session.lock:
+                session.set_brownian(
+                    float(payload.get("mass_ratio", 0.5)),
+                    int(payload.get("molecule_count", 40)),
+                )
+                data = session.snapshot_brownian()
+        except (TypeError, ValueError, OverflowError) as exc:
+            return jsonify({"error": str(exc)}), 400
         return jsonify({"session_id": session.session_id, "data": data})
 
     @app.post("/api/live/brownian/step")
@@ -109,9 +174,12 @@ def create_app() -> Flask:
     @app.post("/api/live/maxwell/set")
     def live_maxwell_set():
         session, payload = _session_from_request()
-        with session.lock:
-            session.set_maxwell(float(payload.get("temperature_c", 20.0)))
-            data = session.snapshot_maxwell(include_histogram=True)
+        try:
+            with session.lock:
+                session.set_maxwell(float(payload.get("temperature_c", 20.0)))
+                data = session.snapshot_maxwell(include_histogram=True)
+        except (TypeError, ValueError, OverflowError) as exc:
+            return jsonify({"error": str(exc)}), 400
         return jsonify({"session_id": session.session_id, "data": data})
 
     @app.post("/api/live/maxwell/step")
@@ -133,9 +201,12 @@ def create_app() -> Flask:
     @app.post("/api/live/galton/start")
     def live_galton_start():
         session, payload = _session_from_request()
-        count = int(payload.get("particle_count", 50))
-        with session.lock:
-            data = session.start_galton(count)
+        try:
+            count = int(payload.get("particle_count", 50))
+            with session.lock:
+                data = session.start_galton(count)
+        except (TypeError, ValueError, OverflowError) as exc:
+            return jsonify({"error": str(exc)}), 400
         return jsonify({"session_id": session.session_id, "data": data})
 
     @app.post("/api/live/galton/step")
@@ -193,8 +264,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument(
+        "--topic",
+        choices=["all", *sorted(TOPIC_PAGES)],
+        default="all",
+        help="all=四专题总览；其余值只启动对应专题",
+    )
     args = parser.parse_args(argv)
-    app = create_app()
+    app = create_app(None if args.topic == "all" else args.topic)
     # threaded=True so concurrent step polls from the browser do not block
     app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
     return 0

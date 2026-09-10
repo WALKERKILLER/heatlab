@@ -1,7 +1,8 @@
 import numpy as np
 
-from heatlab.models.galton import GaltonModel
+from heatlab.models.galton import GaltonModel, GaltonParameters
 from heatlab.randomness import RandomManager
+from heatlab.web.app import create_app
 
 
 def test_galton_is_reproducible() -> None:
@@ -24,3 +25,17 @@ def test_theoretical_probabilities_sum_to_one() -> None:
     batch = GaltonModel(RandomManager(33).stream("galton")).simulate(50)
     assert np.isclose(batch.theoretical.sum(), 1.0)
     assert np.isclose(batch.probabilities.sum(), 1.0)
+
+
+def test_invalid_galton_parameters_are_rejected() -> None:
+    with np.testing.assert_raises(ValueError):
+        GaltonParameters(rows=0)
+    with np.testing.assert_raises(ValueError):
+        GaltonParameters(probability_right=np.nan)
+    with np.testing.assert_raises(ValueError):
+        GaltonParameters(particle_count=0)
+
+
+def test_live_galton_endpoint_rejects_invalid_particle_count() -> None:
+    client = create_app().test_client()
+    assert client.post("/api/live/galton/start", json={"particle_count": 0}).status_code == 400

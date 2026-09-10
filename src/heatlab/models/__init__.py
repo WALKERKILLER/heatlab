@@ -2,7 +2,12 @@
 
 from heatlab.models.brownian import BrownianModel, BrownianParameters
 from heatlab.models.galton import GaltonBatch, GaltonModel, GaltonParameters
-from heatlab.models.ideal_gas import IdealGasModel, IdealGasState
+from heatlab.models.ideal_gas import (
+    HeatExchangeModel,
+    HeatExchangeState,
+    IdealGasModel,
+    IdealGasState,
+)
 from heatlab.models.maxwell import MaxwellModel, MaxwellState
 
 __all__ = [
@@ -13,6 +18,8 @@ __all__ = [
     "GaltonParameters",
     "IdealGasModel",
     "IdealGasState",
+    "HeatExchangeModel",
+    "HeatExchangeState",
     "MaxwellModel",
     "MaxwellState",
 ]

@@ -97,19 +97,22 @@ class BrownianTab(QWidget):
         for text_artist in self.path_legend.get_texts():
             text_artist.set_fontsize(8)
 
-        # ---- 图表：均方位移 MSD ----
+        # ---- 图表：均方位移 ----
         self.chart_canvas = MplCanvas(self, width=5, height=5)
         self.ax_msd = self.chart_canvas.figure.add_subplot(111)
         style_axes(self.ax_msd)
         self.msd_line, = self.ax_msd.plot([], [], color=ACCENT, linewidth=1.8, label="时间平均 MSD")
-        self.theory_line, = self.ax_msd.plot([], [], "--", color=ACCENT_2, linewidth=1.3, label="4Dt")
+        self.theory_line, = self.ax_msd.plot([], [], "--", color=ACCENT_2, linewidth=1.3, label="连续介质参考 4Dt")
         self.ax_msd.set_title("均方位移与扩散常数")
         self.ax_msd.set_xlabel("滞后时间")
-        self.ax_msd.set_ylabel("MSD")
+        self.ax_msd.set_ylabel("均方位移（MSD）")
         style_legend(self.ax_msd.legend(loc="upper left"))
 
         # ---- 控制面板 ----
-        panel = ControlPanel("布朗运动", lead="花粉受液体分子随机碰撞，绘制轨迹并估计扩散常数。")
+        panel = ControlPanel(
+            "布朗运动",
+            lead="液体分子受热运动并与花粉真实碰撞；碰撞冲量推动花粉，绘制轨迹并估计扩散常数。",
+        )
         self.mass = LabeledSlider(
             "花粉粒子质量 m/m₀",
             5,
@@ -139,7 +142,10 @@ class BrownianTab(QWidget):
         panel.add(self.vector_check)
         panel.add(self.fade_check)
 
-        self.metrics = MetricGrid("理论 D", "估计 D", "花粉碰撞", "液体碰撞", "时长")
+        self.metrics = MetricGrid(
+            "连续介质参考扩散系数 D", "轨迹估计扩散系数 D",
+            "花粉碰撞次数", "液体分子碰撞次数", "模拟时间",
+        )
         panel.add(self.metrics)
 
         self.pause_button = QPushButton("暂停")
@@ -152,7 +158,7 @@ class BrownianTab(QWidget):
         panel.finish()
 
         self.workbench = WorkbenchPanel(
-            panel, "花粉粒子运动轨迹", self.scene_canvas, "均方位移 MSD", self.chart_canvas
+            panel, "花粉粒子运动轨迹", self.scene_canvas, "均方位移（MSD）", self.chart_canvas
         )
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -166,7 +172,9 @@ class BrownianTab(QWidget):
 
     def _parameters_changed(self, _value: float) -> None:
         self.model.set_parameters(self.mass.value, int(self.molecules.value))
-        self._update_metrics()
+        # set_parameters starts a new statistical sample; redraw immediately
+        # so the scene and the MSD readout never describe different trials.
+        self._update_plot(full=True)
 
     def _toggle_arrow(self, checked: bool) -> None:
         self.show_arrow = checked
@@ -292,9 +300,9 @@ class BrownianTab(QWidget):
         d_hat = self.model.empirical_diffusion()
         d_text = "采样不足" if np.isnan(d_hat) else f"{d_hat:.3f}"
         self.metrics.set_values({
-            "理论 D": f"{self.model.params.theoretical_diffusion:.3f}",
-            "估计 D": d_text,
-            "花粉碰撞": str(self.model.collision_count),
-            "液体碰撞": str(self.model.liquid_collision_count),
-            "时长": f"{self.model.elapsed:.2f}",
+            "连续介质参考扩散系数 D": f"{self.model.params.theoretical_diffusion:.3f}",
+            "轨迹估计扩散系数 D": d_text,
+            "花粉碰撞次数": str(self.model.collision_count),
+            "液体分子碰撞次数": str(self.model.liquid_collision_count),
+            "模拟时间": f"{self.model.elapsed:.2f} s",
         })

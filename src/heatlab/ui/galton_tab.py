@@ -55,7 +55,7 @@ class GaltonTab(QWidget):
         self.theory_line, = self.ax_hist.plot(
             bins, np.zeros_like(bins, dtype=float), "o-", color=ACCENT, label="二项分布理论"
         )
-        self.ax_hist.set_xlabel("落入位置 k（向右次数）")
+        self.ax_hist.set_xlabel("槽位位置 k（向右碰撞次数）")
         self.ax_hist.set_ylabel("概率")
         self.ax_hist.set_ylim(0, 0.35)
         style_legend(self.ax_hist.legend(loc="upper right"))
@@ -63,7 +63,7 @@ class GaltonTab(QWidget):
         # ---- 控制面板 ----
         panel = ControlPanel("伽尔顿板", lead="粒子逐层下落，槽位分布逼近二项分布（蒙特卡洛）。")
         self.particle_count = LabeledSlider(
-            "粒子数 N", 1, 100, 50, formatter=lambda v: f"{int(v)}"
+            "投放粒子数", 1, 100, 50, formatter=lambda v: f"{int(v)}"
         )
         panel.add(self.particle_count)
         self.run_button = QPushButton("投放粒子")
@@ -71,7 +71,7 @@ class GaltonTab(QWidget):
         self.run_button.clicked.connect(self.start_drop)
         panel.add(self.run_button)
 
-        self.metrics = MetricGrid("样本数", "均值", "方差", "层")
+        self.metrics = MetricGrid("样本数", "槽位位置均值", "槽位位置方差")
         panel.add(self.metrics)
         panel.finish()
 
@@ -111,7 +111,7 @@ class GaltonTab(QWidget):
         self.ax_board.set_aspect("equal", adjustable="box")
         self.ax_board.set_title("粒子下落路径")
         self.ax_board.set_xlabel("水平位置")
-        self.ax_board.set_ylabel("钉板层数")
+        self.ax_board.set_ylabel("")
 
     def start_drop(self) -> None:
         self.batch = self.model.simulate(int(self.particle_count.value))
@@ -194,9 +194,8 @@ class GaltonTab(QWidget):
         sample_var = float(np.average((bins - sample_mean) ** 2, weights=self.batch.counts))
         self.metrics.set_values({
             "样本数": str(int(self.batch.counts.sum())),
-            "均值": f"{sample_mean:.3f}（理论 6.000）",
-            "方差": f"{sample_var:.3f}（理论 3.000）",
-            "层": f"{rows} / {rows}",
+            "槽位位置均值": f"{sample_mean:.3f}（理论 6.000）",
+            "槽位位置方差": f"{sample_var:.3f}（理论 3.000）",
         })
         self.run_button.setEnabled(True)
         self.chart_canvas.draw_idle()

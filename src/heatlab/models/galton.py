@@ -15,6 +15,14 @@ class GaltonParameters:
     probability_right: float = 0.5
     particle_count: int = 50
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.rows, (int, np.integer)) or self.rows <= 0:
+            raise ValueError("rows must be a positive integer")
+        if not np.isfinite(self.probability_right) or not 0.0 <= self.probability_right <= 1.0:
+            raise ValueError("probability_right must be finite and within [0, 1]")
+        if not isinstance(self.particle_count, (int, np.integer)) or self.particle_count <= 0:
+            raise ValueError("particle_count must be a positive integer")
+
 
 @dataclass(slots=True)
 class GaltonBatch:
@@ -31,6 +39,10 @@ class GaltonModel:
     params: GaltonParameters = field(default_factory=GaltonParameters)
 
     def simulate(self, particle_count: int | None = None) -> GaltonBatch:
+        if particle_count is not None and (
+            not isinstance(particle_count, (int, np.integer)) or particle_count <= 0
+        ):
+            raise ValueError("particle_count must be a positive integer")
         count = self.params.particle_count if particle_count is None else int(particle_count)
         count = int(np.clip(count, 1, 100))
         rows = self.params.rows
