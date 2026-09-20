@@ -11,6 +11,14 @@
 - 可选 WebSocket 推流，降低高频 step 轮询
 - 桌面与 Web 统一可调动画步长
 
+## [0.3.0] - 2026-09-20
+
+### Added
+- 四个实验专题均支持独立启动命令：`heatlab-ideal-gas`、`heatlab-brownian`、`heatlab-maxwell`、`heatlab-galton`
+
+### Fixed
+- 修复高密度布朗运动液体粒子初始化与运动中的重叠分离，避免液体分子穿模并保持花粉粒子碰撞行为稳定
+
 ## [0.2.0] - 2026-08-18
 
 ### Added
@@ -59,6 +67,7 @@
 - 单元测试、数值验证脚本与示例输出图
 - MIT 许可证与第三方声明
 
-[Unreleased]: https://github.com/WALKERKILLER/heatlab/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/WALKERKILLER/heatlab/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/WALKERKILLER/heatlab/releases/tag/v0.3.0
 [0.2.0]: https://github.com/WALKERKILLER/heatlab/releases/tag/v0.2.0
 [0.1.0]: https://github.com/WALKERKILLER/heatlab/releases/tag/v0.1.0
