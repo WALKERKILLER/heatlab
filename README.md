@@ -3,7 +3,7 @@
 [![CI](https://github.com/WALKERKILLER/heatlab/actions/workflows/ci.yml/badge.svg)](https://github.com/WALKERKILLER/heatlab/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](https://github.com/WALKERKILLER/heatlab/releases/tag/v0.3.0)
+[![Version](https://img.shields.io/badge/version-0.3.1-green.svg)](https://github.com/WALKERKILLER/heatlab/releases/tag/v0.3.1)
 
 > 交互式热学科学计算实验台：理想气体 · 布朗运动 · 麦克斯韦速率分布 · 伽尔顿板
 > 提供 **浏览器实时版**、**Windows Web 一键演示版（推荐）** 与旧版 PySide6 源码入口。
@@ -19,7 +19,7 @@
 > # 浏览器打开 http://127.0.0.1:8765
 > ```
 >
-> **不想安装 Python？** 直接下载 [HeatLab-Web-win64.zip（v0.3.0 正式版）](https://github.com/WALKERKILLER/heatlab/releases/download/v0.3.0/HeatLab-Web-win64.zip)，解压后双击 `HeatLab-Web.exe`；它会自动启动本地 Flask 后端并打开默认浏览器。演示版前端仍从 CDN 加载 Vue、Chart.js、Plotly 与 KaTeX，因此演示电脑需要联网。
+> **不想安装 Python？** 直接下载 [HeatLab-Web-win64.zip（v0.3.1 正式版）](https://github.com/WALKERKILLER/heatlab/releases/download/v0.3.1/HeatLab-Web-win64.zip)，解压后双击 `HeatLab-Web.exe`；它会自动启动本地 Flask 后端并打开默认浏览器。演示版前端仍从 CDN 加载 Vue、Chart.js、Plotly 与 KaTeX，因此演示电脑需要联网。
 
 ![Validation montage](examples/validation/validation_montage.png)
 
@@ -52,7 +52,7 @@
 
 三种使用方式：
 
-1. **Windows Web 一键演示版（推荐）** — [下载 v0.3.0 正式版](https://github.com/WALKERKILLER/heatlab/releases/tag/v0.3.0)，解压后双击 `HeatLab-Web.exe`
+1. **Windows Web 一键演示版（推荐）** — [下载 v0.3.1 正式版](https://github.com/WALKERKILLER/heatlab/releases/tag/v0.3.1)，解压后双击 `HeatLab-Web.exe`
 2. **浏览器实时版** — `heatlab-web` → <http://127.0.0.1:8765>，源码开发与本地调试入口
 3. **旧版 PySide6 桌面版** — `heatlab` / `heatlab-ideal-gas` 等，仅保留用于源码对照，不再作为主要演示入口
 
@@ -80,7 +80,7 @@ Web 端新增交互特性：
 
 这是给课堂演示和他人体验准备的 **Web + Flask 后端打包版**，不是重新制作一套简陋的 PySide6 窗口：
 
-1. 从 [v0.3.0 Release](https://github.com/WALKERKILLER/heatlab/releases/tag/v0.3.0) 下载 `HeatLab-Web-win64.zip`；后续版本也会沿用同一 Release 下载方式。
+1. 从 [v0.3.1 Release](https://github.com/WALKERKILLER/heatlab/releases/tag/v0.3.1) 下载 `HeatLab-Web-win64.zip`；后续版本也会沿用同一 Release 下载方式。
 2. 解压 `HeatLab-Web-win64.zip`。
 3. 双击 `HeatLab-Web.exe`，程序会启动本地服务并打开默认浏览器。
 4. 浏览器访问地址默认是 `http://127.0.0.1:8765`；如果端口被占用，启动器会自动尝试附近端口。
@@ -157,7 +157,7 @@ pip install -e .
 ### Windows Web 一键演示版（推荐）
 
 ```text
-下载 [HeatLab-Web-win64.zip（v0.3.0）](https://github.com/WALKERKILLER/heatlab/releases/download/v0.3.0/HeatLab-Web-win64.zip) → 解压 → 双击 HeatLab-Web.exe
+下载 [HeatLab-Web-win64.zip（v0.3.1）](https://github.com/WALKERKILLER/heatlab/releases/download/v0.3.1/HeatLab-Web-win64.zip) → 解压 → 双击 HeatLab-Web.exe
 ```
 
 程序会自动启动内置 Flask 后端并打开默认浏览器，不需要安装 Python。演示电脑需要联网加载 CDN 前端依赖；退出时请关闭 `HeatLab-Web.exe`。
@@ -256,7 +256,7 @@ Windows 一键演示版使用 `heatlab.web.launcher` 启动同一个 Flask 应�
 - **两室热交换**：两室体积和物质的量相等，采用氮气双原子近似 `C_v=5R/2`；导热隔板以固定热导率的课堂近似计算 `Q̇=K(T₁−T₂)`，每步显式守恒两室总内能并防止温度越过平衡点；这不是完整的非平衡传热 PDE。
 - **热力学第一定律**：采用气体对外做功为正的符号约定 `δQ=dU+P dV`；封闭绝热过程热量为 0、内能变化加气体对外做功为 0，理论路径满足 `PV^γ=常量` 与 `TV^(γ−1)=常量`。快速拖动只用于显示显著变化，不能解读为严格准静态过程。
 - **布朗运动**：原文缺黏度等 SI 参数 → 使用无量纲显式溶剂模型；质量滑条下限 `0.05 m₀`。液体分子采用 **Ornstein-Uhlenbeck 热运动 + 硬球弹性碰撞**，花粉只在实际接触时按两体弹性碰撞交换动量；`D=theta/gamma` 仅作为连续介质参考线，不再额外施加 Langevin 随机项（借鉴 OpenMM/HOOMD 的热浴处理原则与开源硬球模型的碰撞响应）
-- **麦克斯韦**：默认氮气分子质量，温度 0–100 °C；显示速度系数 1.5，粒子活跃运动  
+- **麦克斯韦**：默认氮气分子质量，温度 0–100 °C；显示速度系数 1.5，粒子活跃运动。粒子在显示容器的四面内壁按镜面反射（位置始终归一化在 `[0, 1]²`），单步跨越多次边界时按穿越次数正确翻转对应速度分量
 - **伽尔顿板**：固定 12 层、`p=0.5`；UI 粒子数 1–100  
 
 ## 文档
@@ -289,7 +289,7 @@ Windows 一键演示版使用 `heatlab.web.launcher` 启动同一个 Flask 应�
   title  = {HeatLab: Thermal Physics Scientific Computing Lab},
   author = {{HeatLab project team}},
   year   = {2026},
-  version = {0.3.0},
+  version = {0.3.1},
   license = {MIT}
 }
 ```
