@@ -18,9 +18,12 @@ def _reflect_unit_interval(
 ) -> None:
     """Reflect particles in [0, 1], including multiple wall crossings."""
     raw = positions[:, axis]
+    # ``raw`` 是 positions 的视图：必须先算好翻转掩码，再写回折叠坐标，
+    # 否则写回后掩码会基于已折叠的位置计算，速度几乎永不反转，
+    # 粒子会被反复折回边界薄层，最终卡死在四角。
+    crossed_odd_times = np.mod(np.floor(raw), 2.0) != 0.0
     folded = np.mod(raw, 2.0)
     positions[:, axis] = np.where(folded <= 1.0, folded, 2.0 - folded)
-    crossed_odd_times = np.mod(np.floor(raw), 2.0) != 0.0
     velocities[crossed_odd_times, axis] *= -1.0
 
 
