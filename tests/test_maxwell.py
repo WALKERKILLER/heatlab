@@ -1,6 +1,6 @@
 import numpy as np
 
-from heatlab.models.maxwell import MaxwellModel, _reflect_unit_interval
+from heatlab.models.maxwell import MaxwellModel, MaxwellState, _reflect_unit_interval
 from heatlab.randomness import RandomManager
 
 
@@ -68,6 +68,41 @@ def test_long_running_gas_does_not_accumulate_at_corners() -> None:
     corners = np.all((positions < 0.08) | (positions > 0.92), axis=1)
     assert corners.mean() < 0.05
     assert np.isclose(np.sum(model.velocities_si**2), energy, rtol=1e-12)
+
+
+def test_wall_reflection_reverses_velocity_component() -> None:
+    """回归：反射掩码必须基于越界前的坐标计算。
+
+    曾经 ``raw = positions[:, axis]`` 是视图，位置写回折叠坐标后掩码读到
+    的是折叠后的值，速度几乎永不反转：粒子被反复折回边界薄层，最终全部
+    卡死在四角。
+    """
+    model = MaxwellModel(
+        RandomManager(28).stream("maxwell"), MaxwellState(particle_count=1)
+    )
+    model.positions = np.array([[0.98, 0.5]])
+    model.velocities_si = np.array([[500.0, 0.0, 0.0]])
+    model.step()
+    assert model.velocities_si[0, 0] < 0.0
+    position_after_bounce = float(model.positions[0, 0])
+    assert 0.0 <= position_after_bounce <= 1.0
+    model.step()
+    assert model.positions[0, 0] < position_after_bounce
+
+
+def test_particles_spread_instead_of_sticking_to_corners() -> None:
+    """回归：长时间运行后粒子应近似均匀分布，而不是聚集在四角。"""
+    model = MaxwellModel(RandomManager(29).stream("maxwell"))
+    for _ in range(2_000):
+        model.step()
+    points = model.positions
+    interior = (
+        (points[:, 0] > 0.25)
+        & (points[:, 0] < 0.75)
+        & (points[:, 1] > 0.25)
+        & (points[:, 1] < 0.75)
+    )
+    assert float(np.mean(interior)) > 0.10
 
 
 def test_invalid_temperature_and_time_step_are_rejected() -> None:

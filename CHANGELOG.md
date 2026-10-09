@@ -4,12 +4,16 @@
 
 ## [Unreleased]
 
-暂无已记录变更。
-
 ### Planned
 - Web 会话可换 Redis 以支持多进程部署
 - 可选 WebSocket 推流，降低高频 step 轮询
 - 桌面与 Web 统一可调动画步长
+
+## [0.3.1] - 2026-09-24
+
+### Fixed
+- 修复麦克斯韦专题粒子向四角聚集卡死：`_reflect_unit_interval` 的翻转掩码曾因 numpy 视图别名读到已折叠的坐标，速度几乎永不反转，粒子被反复折回边界薄层后停在四角；现在掩码基于越界前的原始坐标计算，撞墙后正确反弹
+- 修复独立专题页（`/topic/*`）整体布局塌陷：`#app` 上的 `:class` 绑定不会参与 Vue 模板编译，`is-standalone` 从未生效，导致网格按四行分配而页面只有三行内容；改为由 body 的 `data-standalone` 属性驱动三行网格，工作区恢复完整高度
 
 ## [0.3.0] - 2026-09-20
 
@@ -67,7 +71,8 @@
 - 单元测试、数值验证脚本与示例输出图
 - MIT 许可证与第三方声明
 
-[Unreleased]: https://github.com/WALKERKILLER/heatlab/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/WALKERKILLER/heatlab/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/WALKERKILLER/heatlab/releases/tag/v0.3.1
 [0.3.0]: https://github.com/WALKERKILLER/heatlab/releases/tag/v0.3.0
 [0.2.0]: https://github.com/WALKERKILLER/heatlab/releases/tag/v0.2.0
 [0.1.0]: https://github.com/WALKERKILLER/heatlab/releases/tag/v0.1.0

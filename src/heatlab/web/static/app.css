@@ -134,7 +134,9 @@ button, input {
   background: var(--bg-activity);
 }
 
-#app.is-standalone {
+/* Vue 挂载容器自身的属性不参与模板编译，写在 #app 上的 :class 不会生效，
+   因此独立专题页（/topic/*）的三行网格改由 body 的 data-standalone 属性驱动。 */
+body[data-standalone="true"] #app {
   grid-template-rows: var(--titlebar-h) minmax(0, 1fr) var(--statusbar-h);
 }
 
