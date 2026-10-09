@@ -71,6 +71,30 @@ def test_heat_exchange_is_energy_balanced_and_particles_stay_in_chambers() -> No
     assert np.isclose(model.heat_transferred_j, 0.0)
 
 
+def test_heat_exchange_history_keeps_initial_transient_and_latest_time() -> None:
+    session = LiveSession(34)
+    session.set_ideal(None, 1.0, experiment_mode="heat-exchange", barrier="conductive", temperature_left_c=80, temperature_right_c=20)
+    model = session.heat_exchange
+    initial = model.temperature_history[0]
+    full_history = [initial]
+    for _ in range(1600):
+        model.step(0.05)
+        full_history.append((model.elapsed_s, model.state.temperature_left_c, model.state.temperature_right_c))
+    points = np.asarray(session.snapshot_ideal()["chart"]["points"])
+    full = np.asarray(full_history)
+    assert len(points) <= 240
+    assert np.allclose(points[0], initial)
+    assert np.allclose(points[-1], full[-1])
+    assert points[-1, 0] > 30
+    assert np.all(np.diff(points[:, 0]) > 0)
+    for column in (1, 2):
+        reconstructed = np.interp(full[:, 0], points[:, 0], points[:, column])
+        assert np.max(np.abs(reconstructed - full[:, column])) < 0.02
+    model.reset()
+    assert len(model.temperature_history) == 1
+    assert model.temperature_history[0][0] == 0
+
+
 def test_centered_finite_particle_pressure_estimate_is_unbiased() -> None:
     ratios = []
     for seed in range(40):
@@ -149,7 +173,78 @@ def test_live_heat_exchange_endpoint_returns_a_valid_snapshot() -> None:
     assert step_response.status_code == 200
 
 
+def test_shared_speed_comparison_uses_kelvin_and_si_speeds_in_both_chambers() -> None:
+    session = LiveSession(35)
+    session.set_ideal(None, 1.0, experiment_mode="heat-exchange", barrier="conductive", temperature_left_c=100, temperature_right_c=0)
+    snapshot = session.snapshot_ideal()
+    left = snapshot["chambers"]["left"]["rms_speed_mps"]
+    right = snapshot["chambers"]["right"]["rms_speed_mps"]
+    assert np.isclose(left / right, np.sqrt(373.15 / 273.15))
+    assert 490 < right < 500
+    assert 570 < left < 580
+    session.step_ideal(steps=10)
+    snapshot = session.snapshot_ideal()
+    assert snapshot["chambers"]["left"]["rms_speed_mps"] < left
+    assert snapshot["chambers"]["right"]["rms_speed_mps"] > right
+
+
 def test_live_parameter_endpoints_reject_non_finite_inputs() -> None:
     client = create_app().test_client()
     assert client.post("/api/live/maxwell/set", json={"temperature_c": float("nan")}).status_code == 400
     assert client.post("/api/live/brownian/set", json={"mass_ratio": float("nan")}).status_code == 400
+
+
+def test_volume_animation_and_adiabatic_axes_cover_both_slider_extremes() -> None:
+    model = IdealGasModel(RandomManager(31).stream("volume-scale"))
+    reference = model.state.volume_litre
+    model.configure_experiment("first-law", volume_litre=reference)
+    initial_temperature = model.state.temperature_k
+    ranges = model.chart_ranges
+    for factor in (0.2, 1.0, 5.0):
+        model.configure_experiment("first-law", volume_litre=reference * factor)
+        assert np.isclose(model.box_length, model.state.volume_litre / model.reference_volume_litre)
+        assert np.isclose(model.state.temperature_k / initial_temperature, factor**(-0.4))
+        assert np.isclose(model.internal_energy_j - model.adiabatic_initial_internal_energy_j + model.work_by_gas_j, 0, atol=1e-12)
+        assert np.sign(model.work_by_gas_j) == np.sign(factor - 1)
+        assert model.chart_ranges == ranges
+        assert model.state.pressure_atm <= ranges["pressure_atm"][1]
+        assert model.state.volume_litre <= ranges["volume_litre"][1]
+        model.step(dt=0.5)
+        assert np.all(model.positions[:, 0] <= model.box_length)
+
+
+def test_heating_increases_display_speed_without_changing_fixed_volume() -> None:
+    model = IdealGasModel(RandomManager(32).stream("heating"))
+    model.configure_experiment("temperature-micro", temperature_c=0)
+    cold = model.display_velocities.copy()
+    length = model.box_length
+    model.configure_experiment("temperature-micro", temperature_c=100)
+    assert np.allclose(model.display_velocities, cold * np.sqrt(373.15 / 273.15))
+    assert model.box_length == length
+
+
+def test_process_axes_fit_the_whole_control_domain_and_stay_fixed() -> None:
+    for mode in ("temperature-micro", "isochoric", "isobaric", "pressure-micro", "isothermal", "first-law"):
+        model = IdealGasModel(RandomManager(33).stream(mode))
+        model.configure_experiment(mode)
+        reference = model.adiabatic_reference_volume_litre if mode == "first-law" else model.reference_volume_litre
+        ranges = model.chart_ranges
+        for endpoint in (0, 100):
+            if mode in ("temperature-micro", "isochoric", "isobaric"):
+                model.configure_experiment(mode, temperature_c=endpoint)
+            else:
+                factor = (0.2 if endpoint == 0 else 5) if mode == "first-law" else (0.5 if endpoint == 0 else 3)
+                model.configure_experiment(mode, volume_litre=reference * factor)
+            assert model.chart_ranges == ranges
+            line = model.process_line_3d()
+            for key, values, current in zip(
+                ("pressure_atm", "volume_litre", "temperature_k"), line,
+                (model.state.pressure_atm, model.state.volume_litre, model.state.temperature_k), strict=True,
+            ):
+                low, high = ranges[key]
+                assert low <= current <= high
+                assert low <= np.min(values) <= np.max(values) <= high
+        if mode == "isobaric":
+            assert ranges["volume_litre"][1] < 1.5 * model.reference_volume_litre
+        if mode in ("temperature-micro", "isochoric"):
+            assert ranges["pressure_atm"][1] < 1.5

@@ -1,4 +1,4 @@
-"""Brownian-motion tab: liquid-molecule scene + pollen trajectory + MSD chart."""
+"""Brownian-motion tab: pollen trajectory and liquid-molecule speed distribution."""
 
 from __future__ import annotations
 
@@ -97,15 +97,19 @@ class BrownianTab(QWidget):
         for text_artist in self.path_legend.get_texts():
             text_artist.set_fontsize(8)
 
-        # ---- 图表：均方位移 ----
+        # ---- 图表：液体分子速率分布 ----
         self.chart_canvas = MplCanvas(self, width=5, height=5)
         self.ax_msd = self.chart_canvas.figure.add_subplot(111)
         style_axes(self.ax_msd)
         self.msd_line, = self.ax_msd.plot([], [], color=ACCENT, linewidth=1.8, label="时间平均 MSD")
         self.theory_line, = self.ax_msd.plot([], [], "--", color=ACCENT_2, linewidth=1.3, label="连续介质参考 4Dt")
-        self.ax_msd.set_title("均方位移与扩散常数")
-        self.ax_msd.set_xlabel("滞后时间")
-        self.ax_msd.set_ylabel("均方位移（MSD）")
+        self.msd_line.set_label("液体分子样本速率概率密度")
+        self.theory_line.set_label("液体分子理论二维麦克斯韦速率概率密度")
+        self.ax_msd.set_title("液体分子速率分布")
+        self.ax_msd.set_xlabel("液体分子速率（无量纲）")
+        self.ax_msd.set_ylabel("液体分子速率概率密度")
+        self.ax_msd.set_xlim(0, 8.0 * self.model.liquid_speed_sigma)
+        self.ax_msd.set_ylim(0, 30.0 / (8.0 * self.model.liquid_speed_sigma) * 1.05)
         style_legend(self.ax_msd.legend(loc="upper left"))
 
         # ---- 控制面板 ----
@@ -158,7 +162,7 @@ class BrownianTab(QWidget):
         panel.finish()
 
         self.workbench = WorkbenchPanel(
-            panel, "花粉粒子运动轨迹", self.scene_canvas, "均方位移（MSD）", self.chart_canvas
+            panel, "花粉粒子运动轨迹", self.scene_canvas, "液体分子速率分布", self.chart_canvas
         )
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -270,13 +274,12 @@ class BrownianTab(QWidget):
         self.scene_canvas.draw_idle()
 
         if full:
-            lag, msd = self.model.msd_curve()
-            self.msd_line.set_data(lag, msd)
-            if len(lag):
-                theory = 4.0 * self.model.params.theoretical_diffusion * lag
-                self.theory_line.set_data(lag, theory)
-                self.ax_msd.relim()
-                self.ax_msd.autoscale_view()
+            sigma = self.model.liquid_speed_sigma
+            counts, edges = np.histogram(self.model.liquid_speeds, bins=30, range=(0, 8.0 * sigma))
+            centers = (edges[:-1] + edges[1:]) * 0.5
+            self.msd_line.set_data(centers, counts / (len(self.model.liquid_speeds) * np.diff(edges)))
+            velocity = np.linspace(0, 8.0 * sigma, 120)
+            self.theory_line.set_data(velocity, velocity / sigma**2 * np.exp(-velocity**2 / (2 * sigma**2)))
             self._update_metrics()
         self.chart_canvas.draw_idle()
 

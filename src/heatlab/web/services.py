@@ -46,6 +46,8 @@ def ideal_gas_snapshot(
         "box_length": model.box_length,
         "box_height": model.box_height,
         "box_depth": model.box_depth,
+        "chart_ranges": model.chart_ranges,
+        "velocities": _array_to_list(model.display_velocities),
         "kinetic_pressure_atm": model.kinetic_pressure_pa() / STANDARD_ATMOSPHERE,
         "positions": _array_to_list(model.display_positions),
         "speeds": _array_to_list(model.speeds),
@@ -132,8 +134,10 @@ def _liquid_speed_distribution(
         return {"speed_hist_v": [], "speed_hist_f": [], "speed_theory_v": [], "speed_theory_f": []}
     # Keep the 1–100 UI range useful: a single molecule still has a valid
     # speed sample, so use a fixed positive range instead of dropping it.
-    upper = max(3.0 * sigma, float(np.max(speeds)) * 1.1)
-    hist_counts, bin_edges = np.histogram(speeds, bins=bins, range=(0.0, upper), density=True)
+    upper = 8.0 * sigma
+    counts, bin_edges = np.histogram(speeds, bins=bins, range=(0.0, upper))
+    # Normalize by all samples, so an off-axis tail is not redistributed into visible bins.
+    hist_counts = counts / (len(speeds) * np.diff(bin_edges))
     bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
     theory_v = np.linspace(0.0, float(bin_edges[-1]), 120)
     theory_f = (theory_v / sigma**2) * np.exp(-(theory_v**2) / (2.0 * sigma**2))
@@ -170,6 +174,7 @@ def maxwell_snapshot(
         "mean_speed": model.mean_speed,
         "rms_speed": model.rms_speed,
         "positions": _array_to_list(model.positions),
+        "velocities": _array_to_list(model.display_velocities),
         "speeds": _array_to_list(model.speeds),
         "pdf_v": _array_to_list(velocity),
         "pdf_f": _array_to_list(density),
@@ -179,6 +184,10 @@ def maxwell_snapshot(
         "component_pdf_f": _array_to_list(comp_density),
         "component_hist_v": _array_to_list(comp_centers),
         "component_hist_f": _array_to_list(comp_counts),
+        "x_max_fixed": model.fixed_speed_limit,
+        "component_x_max_fixed": model.fixed_component_limit,
+        "y_max_fixed": model.fixed_pdf_peak,
+        "component_y_max_fixed": model.fixed_component_peak,
     }
 
 

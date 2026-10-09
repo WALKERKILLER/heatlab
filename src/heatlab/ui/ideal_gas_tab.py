@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+from matplotlib.ticker import FuncFormatter
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -38,7 +39,7 @@ class IdealGasTab(QWidget):
         ("isochoric", "等容"),
         ("isobaric", "等压"),
         ("heat-exchange", "两室热交换"),
-        ("first-law", "第一定律"),
+        ("first-law", "绝热过程"),
     )
 
     # 三维盒子 12 条棱（顶点索引对）
@@ -123,7 +124,8 @@ class IdealGasTab(QWidget):
             "压强", 100, 200, 100, transform=lambda x: x / 100, formatter=lambda v: f"{v:.2f} atm"
         )
         self.volume = LabeledSlider(
-            "相对体积 V/V₀", 20, 500, 100, transform=lambda x: x / 100, formatter=lambda v: f"{v:.2f} V₀"
+            "体积", 20, 500, 100, transform=lambda x: x / 100,
+            formatter=lambda v: f"{v * (self.model.adiabatic_reference_volume_litre if self.active_experiment == 'first-law' and self.model.adiabatic_reference_volume_litre > 0 else self.model.reference_volume_litre):.4f} L",
         )
         self.left_temperature = LabeledSlider(
             "左室温度", 0, 100, 80, formatter=lambda v: f"{v:.0f} °C"
@@ -300,6 +302,7 @@ class IdealGasTab(QWidget):
         self._applying_experiment = True
         try:
             if self.active_experiment == "heat-exchange":
+                self.model.experiment_mode = "heat-exchange"
                 self.heat_exchange.configure(
                     barrier=self.barrier,
                     temperature_left_c=self.left_temperature.value,
@@ -311,11 +314,15 @@ class IdealGasTab(QWidget):
             if self.active_experiment in ("pressure-micro", "isothermal", "first-law"):
                 reference = (
                     self.model.adiabatic_reference_volume_litre
-                    if self.active_experiment == "first-law"
+                    if self.active_experiment == self.model.experiment_mode == "first-law"
                     and self.model.adiabatic_reference_volume_litre > 0
                     else self.model.reference_volume_litre
                 )
-                volume_litre = reference * self.volume.value
+                volume_litre = (
+                    self.model.state.volume_litre
+                    if self.active_experiment == "first-law" and self.model.experiment_mode != "first-law"
+                    else reference * self.volume.value
+                )
             self.model.configure_experiment(
                 self.active_experiment,
                 temperature_c=self.temperature.value,
@@ -323,6 +330,9 @@ class IdealGasTab(QWidget):
                 volume_litre=volume_litre,
                 demo_particle_count=int(self.demo_particles.value),
             )
+            if volume_litre is not None:
+                reference = self.model.adiabatic_reference_volume_litre if self.active_experiment == "first-law" else self.model.reference_volume_litre
+                self.volume.slider.setValue(round(self.model.state.volume_litre / reference * 100))
         finally:
             self._applying_experiment = False
 
@@ -460,9 +470,14 @@ class IdealGasTab(QWidget):
             self.ax_box.set_xlim(0, width)
             self.ax_box.set_ylim(0, 1)
             self.ax_box.set_zlim(0, 1)
+            for axis in (self.ax_box.xaxis, self.ax_box.yaxis, self.ax_box.zaxis):
+                axis.set_major_formatter(FuncFormatter(lambda value, _position: f"{value:g}"))
+            self.ax_box.set_xlabel("示意位置 x（无量纲）")
+            self.ax_box.set_ylabel("示意位置 y（无量纲）")
+            self.ax_box.set_zlabel("示意位置 z（无量纲）")
             self.particle_scatter._offsets3d = (points[:, 0], points[:, 1], points[:, 2])
             self.particle_scatter.set_array(speeds)
-            self.particle_scatter.set_clim(float(speeds.min()), float(speeds.max()))
+            self.particle_scatter.set_clim(0, 1000)
             self.ax_box.set_title(
                 f"两室热交换｜左 {self.heat_exchange.state.temperature_left_c:.0f} °C，"
                 f"右 {self.heat_exchange.state.temperature_right_c:.0f} °C"
@@ -476,13 +491,18 @@ class IdealGasTab(QWidget):
             artist.remove()
         self._box_line_artists.clear()
         self._draw_box_edges()
-        self.ax_box.set_box_aspect(
-            (self.model.box_length, self.model.box_height, self.model.box_depth)
-        )
-        self.ax_box.set_xlim(0, self.model.box_length)
+        maximum_length = self.model.chart_ranges["volume_litre"][1] / self.model.reference_volume_litre
+        self.ax_box.set_box_aspect((maximum_length, self.model.box_height, self.model.box_depth))
+        self.ax_box.set_xlim(0, maximum_length)
         self.ax_box.set_ylim(0, self.model.box_height)
         self.ax_box.set_zlim(0, self.model.box_depth)
         x, y, z = self.model.positions.T
+        side_cm = np.cbrt(self.model.reference_volume_litre / 1_000.0) * 100.0
+        for axis in (self.ax_box.xaxis, self.ax_box.yaxis, self.ax_box.zaxis):
+            axis.set_major_formatter(FuncFormatter(lambda value, _position: f"{value * side_cm:.1f}"))
+        self.ax_box.set_xlabel("容器长度 / cm")
+        self.ax_box.set_ylabel("容器高度 / cm")
+        self.ax_box.set_zlabel("容器深度 / cm")
         self.particle_scatter._offsets3d = (x, y, z)
         self._update_particle_colors()
         self.scene_canvas.draw_idle()
@@ -490,7 +510,7 @@ class IdealGasTab(QWidget):
     def _update_particle_colors(self) -> None:
         speeds = self.model.speeds
         self.particle_scatter.set_array(speeds)
-        self.particle_scatter.set_clim(float(speeds.min()), float(speeds.max()))
+        self.particle_scatter.set_clim(0, 1000)
 
     def _tick(self) -> None:
         if self.active_experiment == "heat-exchange":
@@ -571,7 +591,7 @@ class IdealGasTab(QWidget):
             return points[:, 2], points[:, 0], np.zeros(len(points))
         if relation == "vt":
             return points[:, 2], points[:, 1], np.zeros(len(points))
-        return points[:, 0], points[:, 1], points[:, 2]
+        return points[:, 1], points[:, 0], points[:, 2]
 
     def _update_chart(self) -> None:
         if self.active_experiment == "heat-exchange":
@@ -586,11 +606,13 @@ class IdealGasTab(QWidget):
             self.state_point.set_visible(False)
             self.theory_line.set_visible(False)
             self._heat_phase_line.set_data_3d(history[:, 0], history[:, 1], history[:, 2])
+            self._heat_phase_line.set_visible(True)
+            self.ax_phase.zaxis.set_visible(True)
             self.ax_phase.set_xlabel("时间 t / s")
             self.ax_phase.set_ylabel("左室温度 / °C")
             self.ax_phase.set_zlabel("右室温度 / °C")
             self.ax_phase.set_title("两室温度随时间变化")
-            self.ax_phase.set_xlim(float(history[:, 0].min()), max(1.0, float(history[:, 0].max())))
+            self.ax_phase.set_xlim(0.0, max(1.0, float(history[-1, 0]) * 1.05))
             self.ax_phase.set_ylim(0, 100)
             self.ax_phase.set_zlim(0, 100)
             self.chart_canvas.draw_idle()
@@ -623,8 +645,8 @@ class IdealGasTab(QWidget):
             self.ax_phase.set_ylabel("压强 P / atm")
             self.ax_phase.set_zlabel("")
             self.ax_phase.zaxis.set_visible(False)
-            self.ax_phase.set_xlim(float(history_x.min()) * 0.98, float(history_x.max()) * 1.02)
-            self.ax_phase.set_ylim(max(0.001, float(history_y.min()) * 0.92), float(history_y.max()) * 1.08)
+            self.ax_phase.set_xlim(*self.model.chart_ranges["temperature_k"])
+            self.ax_phase.set_ylim(*self.model.chart_ranges["pressure_atm"])
             self.ax_phase.set_zlim(-1.0, 1.0)
             self.ax_phase.view_init(elev=90, azim=-90)
             self.ax_phase.set_title("压强与绝对温度关系")
@@ -633,19 +655,19 @@ class IdealGasTab(QWidget):
             self.ax_phase.set_ylabel("体积 V / L")
             self.ax_phase.set_zlabel("")
             self.ax_phase.zaxis.set_visible(False)
-            self.ax_phase.set_xlim(float(history_x.min()) * 0.98, float(history_x.max()) * 1.02)
-            self.ax_phase.set_ylim(max(0.001, float(history_y.min()) * 0.92), float(history_y.max()) * 1.08)
+            self.ax_phase.set_xlim(*self.model.chart_ranges["temperature_k"])
+            self.ax_phase.set_ylim(*self.model.chart_ranges["volume_litre"])
             self.ax_phase.set_zlim(-1.0, 1.0)
             self.ax_phase.view_init(elev=90, azim=-90)
             self.ax_phase.set_title("体积与绝对温度关系")
         else:
-            self.ax_phase.set_xlabel("压强 P / atm")
-            self.ax_phase.set_ylabel("体积 V / L")
+            self.ax_phase.set_xlabel("体积 V / L")
+            self.ax_phase.set_ylabel("压强 P / atm")
             self.ax_phase.set_zlabel("绝对温度 T / K")
             self.ax_phase.zaxis.set_visible(True)
-            self.ax_phase.set_xlim(max(0.001, float(history_x.min()) * 0.92), float(history_x.max()) * 1.08)
-            self.ax_phase.set_ylim(max(0.001, float(history_y.min()) * 0.92), float(history_y.max()) * 1.08)
-            self.ax_phase.set_zlim(float(history_z.min()) * 0.92, float(history_z.max()) * 1.08)
+            self.ax_phase.set_xlim(*self.model.chart_ranges["volume_litre"])
+            self.ax_phase.set_ylim(*self.model.chart_ranges["pressure_atm"])
+            self.ax_phase.set_zlim(*self.model.chart_ranges["temperature_k"])
             self.ax_phase.view_init(elev=25, azim=-60)
             self.ax_phase.set_title("压强与体积状态图")
         self.chart_canvas.draw_idle()

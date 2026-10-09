@@ -2,7 +2,20 @@ import numpy as np
 
 from heatlab.models.brownian import BrownianModel
 from heatlab.randomness import RandomManager
-from heatlab.web.services import brownian_snapshot
+from heatlab.web.services import _liquid_speed_distribution, brownian_snapshot
+
+
+def test_liquid_speed_histogram_uses_fixed_bins_and_keeps_single_sample_valid() -> None:
+    expected_centers = None
+    for samples in (np.array([1.0]), np.linspace(0, 4, 100), np.array([10.0])):
+        data = _liquid_speed_distribution(samples, sigma=1.0)
+        centers = np.asarray(data["speed_hist_v"])
+        density = np.asarray(data["speed_hist_f"])
+        assert np.isfinite(density).all()
+        if expected_centers is None:
+            expected_centers = centers
+        assert np.array_equal(centers, expected_centers)
+        assert np.isclose(np.sum(density) * (8.0 / 30), np.mean(samples <= 8.0))
 
 
 def test_brownian_path_is_reproducible() -> None:

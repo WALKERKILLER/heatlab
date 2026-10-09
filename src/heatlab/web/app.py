@@ -14,7 +14,7 @@ from heatlab.web.sessions import STORE
 TOPIC_PAGES: dict[str, dict[str, str]] = {
     "ideal-gas": {"label": "热力学", "title": "HeatLab · 热力学"},
     "brownian": {"label": "布朗运动", "title": "HeatLab · 布朗运动"},
-    "maxwell": {"label": "麦克斯韦分布", "title": "HeatLab · 麦克斯韦分布"},
+    "maxwell": {"label": "气体分子速率的麦克斯韦分布", "title": "HeatLab · 气体分子速率的麦克斯韦分布"},
     "galton": {"label": "伽尔顿板", "title": "HeatLab · 伽尔顿板"},
 }
 

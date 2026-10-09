@@ -17,6 +17,7 @@ from heatlab.constants import (
     REFERENCE_TEMPERATURE_K,
     STANDARD_ATMOSPHERE,
 )
+from heatlab.models.collisions import scatter_gas_particles
 
 
 def _reflect_axis(
@@ -137,12 +138,8 @@ class IdealGasModel:
         self._append_phase_point()
 
     def _display_length(self) -> float:
-        # 显示体积 ∝ T/P，长度方向随状态方程缩放，高度与深度固定为 1.0。
-        ratio = (
-            (self.state.temperature_k / REFERENCE_TEMPERATURE_K)
-            / (self.state.pressure_pa / REFERENCE_PRESSURE_PA)
-        )
-        return float(np.clip(ratio, 0.45, 1.6))
+        # 固定横截面：长度与实际体积成正比，不限幅、不随画面自动缩放。
+        return self.state.volume_litre / self.reference_volume_litre
 
     def _random_positions(self) -> np.ndarray:
         points = self.rng.random((self.state.particle_count, 3))
@@ -183,9 +180,8 @@ class IdealGasModel:
 
     @property
     def display_velocities(self) -> np.ndarray:
-        thermal_rms = np.sqrt(3.0 * BOLTZMANN * self.state.temperature_k / self.state.molecule_mass_kg)
-        # 显示速度系数 1.5：让粒子以热速率尺度活跃运动（真实气体观感），
-        # 而非 0.5 的“慢漂移”。仅影响可视化，不改变物理状态。
+        thermal_rms = np.sqrt(3.0 * BOLTZMANN * REFERENCE_TEMPERATURE_K / self.state.molecule_mass_kg)
+        # 固定时间缩放，保留升温时速率随 sqrt(T) 增加的关系。
         return self.velocities_si / max(thermal_rms, np.finfo(float).tiny) * 1.5
 
     @property
@@ -251,6 +247,7 @@ class IdealGasModel:
 
         entering = mode != self.experiment_mode
         if entering:
+            self.phase_history.clear()
             self.experiment_mode = mode
             process_mode = {
                 "temperature-micro": "isochoric",
@@ -369,6 +366,42 @@ class IdealGasModel:
         scale = np.sqrt(self.state.temperature_k / old_temperature_k)
         self.velocities_si *= scale
 
+    @property
+    def chart_ranges(self) -> dict[str, list[float]]:
+        """Fixed axes covering the current experiment's entire slider domain."""
+        reference = self.reference_volume_litre
+        temperature_min = CELSIUS_OFFSET
+        pressure_min = 0.0
+        volume_min = 0.0
+        if self.experiment_mode in ("adiabatic", "first-law"):
+            anchor_v = self.adiabatic_reference_volume_litre
+            anchor_t = self._adiabatic_initial_temperature_k
+            volume_max = 5.0 * anchor_v
+            temperature_max = anchor_t * 0.2 ** (1.0 - self.ADIABATIC_GAMMA)
+            temperature_min = anchor_t * 5.0 ** (1.0 - self.ADIABATIC_GAMMA)
+            pressure_max = self.state.amount_mol * GAS_CONSTANT * temperature_max / (0.2 * anchor_v / 1_000.0) / STANDARD_ATMOSPHERE
+        else:
+            temperature_max = CELSIUS_OFFSET + 100.0
+            if self.experiment_mode in ("temperature-micro", "isochoric"):
+                volume_max = self._locked_volume_m3 * 1_000.0
+                pressure_max = self.state.amount_mol * GAS_CONSTANT * temperature_max / self._locked_volume_m3 / STANDARD_ATMOSPHERE
+                pressure_min = pressure_max * CELSIUS_OFFSET / temperature_max
+            elif self.experiment_mode == "isobaric":
+                pressure_max = self._locked_pressure_atm
+                volume_max = self.state.amount_mol * GAS_CONSTANT * temperature_max / (pressure_max * STANDARD_ATMOSPHERE) * 1_000.0
+                volume_min = volume_max * CELSIUS_OFFSET / temperature_max
+                pressure_min = pressure_max
+            else:
+                volume_max = 3.0 * reference
+                temperature_min = self._locked_temperature_c + CELSIUS_OFFSET
+                temperature_max = temperature_min
+                pressure_max = self.state.amount_mol * GAS_CONSTANT * temperature_max / (0.5 * reference / 1_000.0) / STANDARD_ATMOSPHERE
+        return {
+            "pressure_atm": [pressure_min * 0.95, pressure_max * 1.05],
+            "volume_litre": [volume_min * 0.95, volume_max * 1.05],
+            "temperature_k": [temperature_min * 0.95, temperature_max * 1.05],
+        }
+
     def _sync_display_length(self, *, old_length: float | None = None) -> None:
         previous = self._box_length if old_length is None else old_length
         self._box_length = self._display_length()
@@ -442,13 +475,13 @@ class IdealGasModel:
 
     def isotherm_line(self, points: int = 200) -> tuple[np.ndarray, np.ndarray]:
         """等温线的 (P, V) 理论曲线：PV = nRT。"""
-        pressures = np.linspace(1.0, 2.0, points)
-        volumes = (
+        volumes = np.linspace(0.5 * self.reference_volume_litre, 3.0 * self.reference_volume_litre, points)
+        pressures = (
             self.state.amount_mol
             * GAS_CONSTANT
             * self.state.temperature_k
-            / (pressures * STANDARD_ATMOSPHERE)
-            * 1_000.0
+            / (volumes / 1_000.0)
+            / STANDARD_ATMOSPHERE
         )
         return pressures, volumes
 
@@ -466,7 +499,8 @@ class IdealGasModel:
 
     def isochore_line(self, points: int = 200) -> tuple[np.ndarray, np.ndarray]:
         """等容线的 (P, V) 理论曲线：P-V 图上为竖直线。"""
-        pressures = np.linspace(1.0, 2.0, points)
+        temperatures = np.linspace(CELSIUS_OFFSET, CELSIUS_OFFSET + 100.0, points)
+        pressures = self.state.amount_mol * GAS_CONSTANT * temperatures / self.state.volume_m3 / STANDARD_ATMOSPHERE
         return pressures, np.full_like(pressures, self.state.volume_litre)
 
     def adiabatic_line(self, points: int = 200) -> tuple[np.ndarray, np.ndarray]:
@@ -501,14 +535,7 @@ class IdealGasModel:
         """当前过程模式对应的 3D 理论线（P, V, T 三元组），用于 P-V-T 相图。"""
         mode = self.state.process_mode
         if mode == "isothermal":
-            pressures = np.linspace(1.0, 2.0, points)
-            volumes = (
-                self.state.amount_mol
-                * GAS_CONSTANT
-                * self.state.temperature_k
-                / (pressures * STANDARD_ATMOSPHERE)
-                * 1_000.0
-            )
+            pressures, volumes = self.isotherm_line(points)
             temperatures = np.full_like(pressures, self.state.temperature_k)
             return pressures, volumes, temperatures
         if mode == "isobaric":
@@ -523,14 +550,9 @@ class IdealGasModel:
             pressures = np.full_like(temperatures, self.state.pressure_atm)
             return pressures, volumes, temperatures
         if mode == "isochoric":
-            pressures = np.linspace(1.0, 2.0, points)
-            volumes = np.full_like(pressures, self.state.volume_litre)
-            temperatures = (
-                pressures
-                * STANDARD_ATMOSPHERE
-                * (volumes / 1_000.0)
-                / (self.state.amount_mol * GAS_CONSTANT)
-            )
+            temperatures = np.linspace(CELSIUS_OFFSET, CELSIUS_OFFSET + 100.0, points)
+            volumes = np.full_like(temperatures, self.state.volume_litre)
+            pressures = self.state.amount_mol * GAS_CONSTANT * temperatures / (volumes / 1_000.0) / STANDARD_ATMOSPHERE
             return pressures, volumes, temperatures
         if mode == "adiabatic":
             volumes = np.linspace(
@@ -593,7 +615,7 @@ class IdealGasModel:
             })
 
         pt_isochores: list[dict[str, list[float]]] = []
-        v_ref = self.state.volume_litre
+        v_ref = self._locked_volume_m3 * 1_000.0
         for factor in (0.6, 0.9, 1.2, 1.6):
             volume_l = v_ref * factor
             ps = n * GAS_CONSTANT * temperatures_k / (volume_l / 1_000.0) / STANDARD_ATMOSPHERE
@@ -621,6 +643,7 @@ class IdealGasModel:
 
         for axis, upper in ((0, self._box_length), (1, 1.0), (2, 1.0)):
             _reflect_axis(self.positions, self.velocities_si, axis, 0.0, upper)
+        scatter_gas_particles(self.positions, self.velocities_si)
 
     def kinetic_pressure_pa(self) -> float:
         """Estimate pressure from the microscopic momentum-flux relation.
@@ -869,11 +892,12 @@ class HeatExchangeModel:
         dt: float,
     ) -> None:
         thermal_rms = np.sqrt(
-            3.0 * BOLTZMANN * temperature_k / self.state.molecule_mass_kg
+            3.0 * BOLTZMANN * REFERENCE_TEMPERATURE_K / self.state.molecule_mass_kg
         )
         positions += velocities / max(thermal_rms, np.finfo(float).tiny) * 1.5 * dt
         for axis, low, high in ((0, x_min, x_max), (1, 0.0, 1.0), (2, 0.0, 1.0)):
             _reflect_axis(positions, velocities, axis, low, high)
+        scatter_gas_particles(positions, velocities)
 
     def step(self, dt: float = 0.020) -> None:
         if not np.isfinite(dt) or dt <= 0.0:
@@ -936,7 +960,12 @@ class HeatExchangeModel:
             self.state.temperature_left_c,
             self.state.temperature_right_c,
         )
-        if not self.temperature_history or not np.allclose(self.temperature_history[-1], point):
+        if not self.temperature_history or self.temperature_history[-1] != point:
             self.temperature_history.append(point)
             if len(self.temperature_history) > 240:
-                del self.temperature_history[:-240]
+                # Preserve the full time span, discarding the least informative interior sample.
+                history = np.asarray(self.temperature_history)
+                fraction = (history[1:-1, 0] - history[:-2, 0]) / (history[2:, 0] - history[:-2, 0])
+                interpolated = history[:-2, 1:] + fraction[:, None] * (history[2:, 1:] - history[:-2, 1:])
+                error = np.max(np.abs(history[1:-1, 1:] - interpolated), axis=1)
+                del self.temperature_history[int(np.argmin(error)) + 1]

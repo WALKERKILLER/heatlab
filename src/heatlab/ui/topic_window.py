@@ -32,9 +32,9 @@ TOPIC_SPECS: dict[str, dict[str, str]] = {
         "label": "布朗运动",
     },
     "maxwell": {
-        "title": "HeatLab · 麦克斯韦分布",
+        "title": "HeatLab · 气体分子速率的麦克斯韦分布",
         "stream": "maxwell",
-        "label": "麦克斯韦分布",
+        "label": "气体分子速率的麦克斯韦分布",
     },
     "galton": {
         "title": "HeatLab · 伽尔顿板",

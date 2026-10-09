@@ -1266,6 +1266,22 @@ input[type="range"]:focus-visible::-webkit-slider-thumb {
 }
 .stage-card::before { display: none; }
 
+.gas-speed-comparison {
+  flex-shrink: 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 11px;
+}
+.gas-speed-group + .gas-speed-group { margin-top: 10px; }
+.gas-speed-heading { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.gas-speed-heading span { color: var(--text-dim); }
+.gas-speed-row { display: grid; grid-template-columns: 70px minmax(0, 1fr) 76px; align-items: center; gap: 8px; margin-top: 5px; }
+.gas-speed-row > span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.gas-speed-track { height: 7px; background: var(--bg-sidebar); }
+.gas-speed-track i { display: block; height: 100%; background: #3794ff; }
+.gas-speed-track .gas-speed-reference { background: #89929e; }
+.gas-speed-comparison p { margin: 8px 0 0; color: var(--text-dim); line-height: 1.5; }
+
 .card-chrome {
   position: relative;
   z-index: 2;

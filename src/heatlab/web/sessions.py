@@ -10,7 +10,7 @@ from uuid import uuid4
 import numpy as np
 from scipy.stats import binom
 
-from heatlab.constants import DEFAULT_SEED, STANDARD_ATMOSPHERE
+from heatlab.constants import BOLTZMANN, DEFAULT_SEED, STANDARD_ATMOSPHERE
 from heatlab.models import (
     BrownianModel,
     GaltonModel,
@@ -19,6 +19,7 @@ from heatlab.models import (
     MaxwellModel,
 )
 from heatlab.randomness import RandomManager
+from heatlab.web.services import _liquid_speed_distribution as _liquid_speed_distribution_payload
 
 
 def _to_list(values: np.ndarray | list[Any], *, limit: int | None = None) -> list[Any]:
@@ -26,28 +27,6 @@ def _to_list(values: np.ndarray | list[Any], *, limit: int | None = None) -> lis
     if limit is not None and len(data) > limit:
         data = data[-limit:]
     return data.tolist()
-
-
-def _liquid_speed_distribution_payload(
-    speeds: np.ndarray, sigma: float, bins: int = 30
-) -> dict[str, Any]:
-    """2-D Maxwell-Boltzmann histogram (f(v)=v/σ²·exp(-v²/2σ²)) for liquids."""
-
-    if len(speeds) == 0 or sigma <= 0.0:
-        return {"speed_hist_v": [], "speed_hist_f": [], "speed_theory_v": [], "speed_theory_f": []}
-    # Keep the 1–100 UI range useful: a single molecule still has a valid
-    # speed sample, so use a fixed positive range instead of dropping it.
-    upper = max(3.0 * sigma, float(np.max(speeds)) * 1.1)
-    hist_counts, bin_edges = np.histogram(speeds, bins=bins, range=(0.0, upper), density=True)
-    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
-    theory_v = np.linspace(0.0, float(bin_edges[-1]), 120)
-    theory_f = (theory_v / sigma**2) * np.exp(-(theory_v**2) / (2.0 * sigma**2))
-    return {
-        "speed_hist_v": _to_list(bin_centers),
-        "speed_hist_f": _to_list(hist_counts),
-        "speed_theory_v": _to_list(theory_v),
-        "speed_theory_f": _to_list(theory_f),
-    }
 
 
 @dataclass
@@ -207,6 +186,8 @@ class LiveSession:
             "box_length": self.ideal.box_length,
             "box_height": self.ideal.box_height,
             "box_depth": self.ideal.box_depth,
+            "chart_ranges": self.ideal.chart_ranges,
+            "velocities": _to_list(self.ideal.display_velocities),
             "kinetic_pressure_atm": kinetic_atm,
             "positions": _to_list(self.ideal.display_positions),
             "speeds": _to_list(self.ideal.speeds),
@@ -261,6 +242,7 @@ class LiveSession:
         right_pressure_atm = state.pressure_right_pa / STANDARD_ATMOSPHERE
         history = np.asarray(model.temperature_history, dtype=float)
         left = {
+            "rms_speed_mps": float(np.sqrt(3.0 * BOLTZMANN * state.temperature_left_k / state.molecule_mass_kg)),
             "temperature_c": state.temperature_left_c,
             "temperature_k": state.temperature_left_k,
             "pressure_pa": state.pressure_left_pa,
@@ -271,6 +253,7 @@ class LiveSession:
             "speeds": _to_list(model.speeds_left),
         }
         right = {
+            "rms_speed_mps": float(np.sqrt(3.0 * BOLTZMANN * state.temperature_right_k / state.molecule_mass_kg)),
             "temperature_c": state.temperature_right_c,
             "temperature_k": state.temperature_right_k,
             "pressure_pa": state.pressure_right_pa,
@@ -402,6 +385,7 @@ class LiveSession:
             "mean_speed": self.maxwell.mean_speed,
             "rms_speed": self.maxwell.rms_speed,
             "positions": _to_list(self.maxwell.positions),
+            "velocities": _to_list(self.maxwell.display_velocities),
             "speeds": _to_list(self.maxwell.speeds),
             "pdf_v": _to_list(velocity),
             "pdf_f": _to_list(density),
@@ -411,6 +395,8 @@ class LiveSession:
             # 避免坐标轴自动缩放造成“变形”观感。
             "y_max_fixed": self.maxwell.fixed_pdf_peak,
             "component_y_max_fixed": self.maxwell.fixed_component_peak,
+            "x_max_fixed": self.maxwell.fixed_speed_limit,
+            "component_x_max_fixed": self.maxwell.fixed_component_limit,
         }
         if include_histogram:
             samples = self.maxwell.sampled_speeds(3_000)

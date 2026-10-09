@@ -223,7 +223,7 @@
             <div v-if="ideal.experiment_mode === 'pressure-micro' || ideal.experiment_mode === 'isothermal' || ideal.experiment_mode === 'first-law'" class="control-block">
               <div class="control-row">
                 <label for="ideal-volume">体积</label>
-                <strong id="ideal-volume-value">{{ idealVolumeFromFactor().toFixed(2) }} L</strong>
+                <strong id="ideal-volume-value">{{ idealVolumeFromFactor().toFixed(4) }} L</strong>
               </div>
               <input
                 id="ideal-volume"
@@ -233,10 +233,10 @@
                 step="0.01"
                 v-model.number="ideal.volume_factor"
                 @input="onIdealChange"
-                :aria-valuetext="idealVolumeFromFactor().toFixed(2) + ' 升'"
+                :aria-valuetext="idealVolumeFromFactor().toFixed(4) + ' 升'"
                 aria-describedby="ideal-volume-value ideal-volume-help"
               />
-              <span id="ideal-volume-help" class="control-help">相对初始体积 V₀ 调节；粒子箱只显示相对长度。</span>
+              <span id="ideal-volume-help" class="control-help">向右拖动增大体积，向左拖动压缩；容器横截面与显示尺度固定，长度与实际体积成正比。</span>
             </div>
             <div v-if="ideal.experiment_mode === 'pressure-micro' || ideal.experiment_mode === 'isothermal'" class="readout-strip">
               <div class="control-row">
@@ -255,7 +255,7 @@
             <div v-if="ideal.experiment_mode === 'temperature-micro' || ideal.experiment_mode === 'isochoric'" class="readout-strip">
               <div class="control-row">
                 <span>保持的体积</span>
-                <strong>{{ ideal.data ? ideal.data.volume_litre.toFixed(2) : '暂无' }} L</strong>
+                <strong>{{ ideal.data ? ideal.data.volume_litre.toFixed(4) : '暂无' }} L</strong>
               </div>
               <p class="control-help">只改变温度，压强由 PV=nRT 得出。</p>
             </div>
@@ -264,7 +264,7 @@
                 <span>边界条件</span>
                 <strong>封闭、绝热</strong>
               </div>
-              <p class="control-help">快速改变体积用于课堂演示；图中的理论曲线是准静态绝热路径。此处温度由绝热关系计算，允许超出其他模块的 0-100 °C 控件范围，但始终保持高于绝对零度。</p>
+              <p class="control-help">滑条选取准静态绝热路径上的平衡状态。膨胀降温、压缩升温；温度允许超出其他模块的 0–100 °C 范围，但始终高于绝对零度。</p>
             </div>
             <template v-if="ideal.experiment_mode === 'heat-exchange'">
               <div class="control-block">
@@ -299,8 +299,9 @@
             </div>
             <div v-if="ideal.experiment_mode !== 'heat-exchange'" class="metrics" role="group" aria-label="热力学当前状态">
               <div class="metric-item"><span>压强 P</span><strong>{{ ideal.data.pressure_atm.toFixed(3) }} atm</strong></div>
-              <div class="metric-item"><span>体积 V</span><strong>{{ ideal.data.volume_litre.toFixed(2) }} L</strong></div>
+              <div class="metric-item"><span>体积 V</span><strong>{{ ideal.data.volume_litre.toFixed(4) }} L</strong></div>
               <div class="metric-item"><span>绝对温度 T</span><strong>{{ ideal.data.temperature_k.toFixed(2) }} K</strong></div>
+              <div class="metric-item"><span>分子均方根速率</span><strong>{{ ideal.data.observables.rms_speed_mps.toFixed(1) }} m/s</strong></div>
               <div v-if="ideal.experiment_mode === 'temperature-micro' || ideal.experiment_mode === 'pressure-micro'" class="metric-item"><span>单分子平均平动动能</span><strong>{{ ideal.data.observables.mean_translational_kinetic_energy_j.toExponential(2) }} J</strong></div>
               <div v-if="ideal.experiment_mode === 'first-law'" class="metric-item"><span>气体对外做功 W</span><strong>{{ ideal.data.observables.work_by_gas_j.toExponential(2) }} J</strong></div>
             </div>
@@ -509,9 +510,9 @@
             <button type="button" class="btn btn-primary" @click="startGalton">投放粒子</button>
           </div>
           <div class="metrics" v-if="galton.data" role="group" aria-label="伽尔顿板读数">
-            <div class="metric-item"><span>样本数</span><strong>{{ galton.data.particle_count }}</strong></div>
-            <div class="metric-item"><span>槽位位置均值</span><strong>{{ galton.data.sample_mean.toFixed(3) }}</strong></div>
-            <div class="metric-item"><span>槽位位置方差</span><strong>{{ galton.data.sample_variance.toFixed(3) }}</strong></div>
+            <div class="metric-item"><span>已落槽粒子数</span><strong>{{ galton.data.finished ? galton.data.particle_count : 0 }}</strong></div>
+            <div class="metric-item"><span>向右偏转次数的平均值</span><strong>{{ galton.data.finished ? galton.data.sample_mean.toFixed(3) + ' 次' : '等待落槽' }}</strong></div>
+            <div class="metric-item"><span>向右偏转次数的方差</span><strong>{{ galton.data.finished ? galton.data.sample_variance.toFixed(3) + ' 次²' : '等待落槽' }}</strong></div>
           </div>
         </template>
 
@@ -521,7 +522,7 @@
       <section class="stage-card scene-panel" aria-labelledby="scene-heading">
         <div class="card-chrome">
           <h3 class="card-title" id="scene-heading">{{ sceneTitle }}</h3>
-          <div class="card-badge" aria-hidden="true">{{ topic === "ideal-gas" ? "场景 · 相对体积" : "场景" }}</div>
+          <div class="card-badge" aria-hidden="true">{{ topic === "ideal-gas" ? "场景 · 固定比例" : "场景" }}</div>
         </div>
         <div class="canvas-host" ref="sceneHost">
           <canvas
@@ -532,9 +533,17 @@
             :aria-label="sceneTitle + '：实时粒子或轨迹动画'"
           ></canvas>
         </div>
+        <div v-if="gasSpeedComparisons.length" class="gas-speed-comparison" aria-label="分子均方根速率同尺度对照">
+          <div v-for="comparison in gasSpeedComparisons" :key="comparison.label" class="gas-speed-group">
+            <div class="gas-speed-heading"><strong>{{ comparison.label }} · 理论均方根速率</strong><span>较 0 °C {{ comparison.change >= 0 ? '+' : '' }}{{ comparison.change.toFixed(1) }}%</span></div>
+            <div class="gas-speed-row"><span>0 °C 基准</span><div class="gas-speed-track"><i class="gas-speed-reference" :style="{ width: comparison.reference / comparison.maximum * 100 + '%' }"></i></div><span>{{ comparison.reference.toFixed(1) }} m/s</span></div>
+            <div class="gas-speed-row"><span>{{ comparison.temperature.toFixed(0) }} °C 当前</span><div class="gas-speed-track"><i :style="{ width: comparison.current / comparison.maximum * 100 + '%' }"></i></div><span>{{ comparison.current.toFixed(1) }} m/s</span></div>
+          </div>
+          <p>条长从零开始、同尺比较 · 速率 ∝ √绝对温度 · 动画统一慢放</p>
+        </div>
       </section>
 
-      <section class="stage-card plot-panel" :class="{ 'plot-split': topic === 'maxwell' || topic === 'brownian', 'plot-pvt': topic === 'ideal-gas' && ideal.experiment_mode !== 'heat-exchange', 'plot-galton': topic === 'galton' }" aria-labelledby="chart-heading">
+      <section class="stage-card plot-panel" :class="{ 'plot-split': topic === 'maxwell', 'plot-pvt': topic === 'ideal-gas' && ideal.experiment_mode !== 'heat-exchange', 'plot-galton': topic === 'galton' }" aria-labelledby="chart-heading">
         <div class="card-chrome">
           <h3 class="card-title" id="chart-heading">{{ chartTitle }}</h3>
           <div class="card-badge" aria-hidden="true">{{ topic === 'ideal-gas' ? '状态关系' : '图表' }}</div>
@@ -569,7 +578,7 @@
               type="button"
               class="chart-zoom-btn"
               @click="openModal('pv')"
-              aria-label="放大压强与体积状态图"
+              :aria-label="'放大' + chartTitle"
               title="放大查看"
             >
               <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
@@ -607,7 +616,7 @@
             </svg>
           </button>
         </div>
-        <div v-else class="chart-host" ref="chartHost">
+        <div v-else-if="topic !== 'brownian'" class="chart-host" ref="chartHost">
           <canvas
             ref="chartCanvas"
             role="img"
@@ -770,7 +779,7 @@
         const topics = [
           { id: "ideal-gas", kicker: "01", label: "热力学", desc: "七组单变量实验", lead: "每次只调一个核心变量，观察分子热运动、状态关系、热交换和能量账本。" },
           { id: "brownian", kicker: "02", label: "布朗运动", desc: "轨迹与扩散", lead: "液体分子随机撞击花粉粒子，产生布朗运动；可观察轨迹、碰撞与扩散常数。" },
-          { id: "maxwell", kicker: "03", label: "麦克斯韦", desc: "气体分子速率分布", lead: "对照气体分子速率概率密度与水平速度分量的理论概率密度和样本。" },
+          { id: "maxwell", kicker: "03", label: "气体分子速率的麦克斯韦分布", desc: "速率与水平速度分量", lead: "对照气体分子速率概率密度与水平速度分量的理论概率密度和样本。" },
           { id: "galton", kicker: "04", label: "伽尔顿板", desc: "二项分布", lead: "粒子逐层下落，槽位分布逼近二项分布。" },
         ];
 
@@ -788,7 +797,7 @@
           { id: "isochoric", label: "等容过程", control: "调温度 · 压强与绝对温度成正比", fixed: "体积保持不变", description: "固定体积改变温度，观察压强随绝对温度成正比。", note: "等容关系应写成 P/T_K=常量，温度比例必须使用 K 而不是摄氏度。" },
           { id: "isobaric", label: "等压过程", control: "调温度 · 体积与绝对温度成正比", fixed: "压强为 1 atm", description: "固定压强改变温度，观察体积随绝对温度成正比。", note: "等压关系应写成 V/T_K=常量；体积读数由 PV=nRT 计算。" },
           { id: "heat-exchange", label: "两室热交换", control: "调两侧初温 · 看温度趋同", fixed: "隔板可切换", description: "两室等体积气体通过导热隔板交换热量，观察温度趋于相同。", note: "导热时只交换内能，不让粒子穿过隔板；绝热时两室温度保持各自初值。" },
-          { id: "first-law", label: "热力学第一定律", control: "调体积 · 看热量与功", fixed: "热量为 0 · 绝热", description: "封闭绝热气体快速改变体积，观察温度、内能与气体对外做功。", note: "采用 δQ=dU+P dV；绝热时热量为 0，因此内能变化加气体对外做功为 0。快速动画不等同于准静态，理论线为近似参照。" },
+          { id: "first-law", label: "绝热过程", control: "调体积 · 看温度与功", fixed: "热量为 0 · 绝热", description: "封闭气体作准静态绝热膨胀或压缩，观察温度、内能与气体对外做功。", note: "采用氮气理想气体近似，绝热指数 γ=1.4；膨胀降温且气体对外做正功，压缩升温且对外做负功，满足 ΔU+W=0。滑条选取平衡状态，不模拟快速不可逆过程。" },
         ];
 
         const topic = ref(DEFAULT_TOPIC);
@@ -836,6 +845,7 @@
         let planarSignature = "";
         let rafId = 0;
         let lastStepAt = 0;
+        let gasStepRemainder = 0;
         let chartDirty = true;
         const pendingParams = new Map();
         let requestGeneration = 0;
@@ -881,9 +891,9 @@
               { tag: "温度单位", katex: "T(\\mathrm{K}) = T(^{\\circ}\\mathrm{C}) + 273.15" },
             ],
             description: [
-              "本专题拆成七个单一目标实验：先观察温度、压强的微观意义，再验证等温、等容、等压关系，最后观察两室热交换与热力学第一定律。",
-              "场景中的透明粒子箱是相对显示，不代表真实容器的绝对尺寸；物理体积以 V=nRT/P 读数为准，演示粒子数（N_demo）与物质的量（n）分开。",
-              "第一定律模块采用氮气/双原子理想气体近似（绝热指数 γ=1.4）；快速改变体积用于演示，理论曲线标注为准静态绝热路径。",
+              "本专题拆成七个单一目标实验：先观察温度、压强的微观意义，再验证等温、等容、等压关系，最后观察两室热交换与绝热过程。",
+              "透明容器采用固定横截面与固定显示比例，长度与体积读数成正比；粒子数不变时膨胀使密度降低。演示粒子数与物质的量分开。",
+              "绝热过程采用氮气/双原子理想气体近似（绝热指数 γ=1.4）；膨胀降温，压缩升温，理论曲线为准静态绝热路径。",
             ],
             usage: [
               "先选择一个实验模块。每个模块只调一个核心变量，固定量会显示在控制区右侧。",
@@ -895,7 +905,6 @@
             title: "专题二：布朗运动与扩散常数",
             formulas: [
               { tag: "连续介质参考扩散系数 D（二维）", katex: "D = \\frac{\\theta}{\\gamma}" },
-              { tag: "均方位移", katex: "\\langle r^2 \\rangle = 4Dt" },
             ],
             description: [
               "大量液体分子不断撞击花粉粒子，使其产生无规则布朗运动；粒子轨迹与扩散常数反映液体分子热运动的统计规律。",
@@ -908,7 +917,7 @@
             ],
           },
           "maxwell": {
-            title: "专题三：气体分子速率分布（麦克斯韦）",
+            title: "专题三：气体分子速率的麦克斯韦分布",
             formulas: [
               { tag: "气体分子速率概率密度", katex: "f(v) = 4\\pi\\left(\\frac{m}{2\\pi kT}\\right)^{3/2} e^{-\\frac{mv^2}{2kT}} v^2" },
               { tag: "水平速度分量概率密度", katex: "f(v_x) = \\sqrt{\\frac{m}{2\\pi kT}}\\, e^{-\\frac{m v_x^2}{2kT}}" },
@@ -936,7 +945,7 @@
             usage: [
               "设置「投放粒子数（1-100）」后点「投放粒子」手动开始下落。",
               "观察粒子从漏斗落入钉板、逐钉弹跳并堆积到各狭槽的过程。",
-              "对比槽位概率与二项分布理论曲线、槽位位置均值与槽位位置方差读数。",
+              "横轴为向右偏转次数（也对应从左起编号的槽位）；平均值与方差统计这个次数，而不是容器中的实际距离。",
             ],
           },
         };
@@ -963,6 +972,21 @@
           if (topic.value === "maxwell") return "固定体积中的分子运动";
           return "伽尔顿板下落";
         });
+        const gasSpeedComparisons = computed(() => {
+          let readings = [];
+          if (topic.value === "maxwell" && maxwell.data) {
+            readings = [["气体", maxwell.data.temperature_c, maxwell.data.rms_speed]];
+          } else if (topic.value === "ideal-gas" && ideal.data) {
+            readings = ideal.experiment_mode === "heat-exchange"
+              ? ["left", "right"].map((side, index) => [index === 0 ? "左室" : "右室", ideal.data.chambers[side].temperature_c, ideal.data.chambers[side].rms_speed_mps])
+              : [["气体", ideal.data.temperature_c, ideal.data.observables.rms_speed_mps]];
+          }
+          return readings.map(([label, temperature, current]) => {
+            const reference = current * Math.sqrt(273.15 / (temperature + 273.15));
+            return { label, temperature, current, reference, change: (current / reference - 1) * 100,
+              maximum: Math.max(current, reference * Math.sqrt(373.15 / 273.15)) * 1.05 };
+          });
+        });
         const chartTitle = computed(() => {
           if (topic.value === "ideal-gas") {
             if (ideal.experiment_mode === "heat-exchange") return "两室温度随时间变化";
@@ -970,7 +994,7 @@
             if (ideal.experiment_mode === "isobaric") return "体积与绝对温度关系";
             return idealChartView.value === "pvt" ? "压强、体积、绝对温度三维状态图" : "压强与体积状态图";
           }
-          if (topic.value === "brownian") return "均方位移（MSD）";
+          if (topic.value === "brownian") return "液体分子速率分布（二维麦克斯韦分布）";
           if (topic.value === "maxwell") return "气体分子速率概率密度与水平速度分量概率密度";
           return "槽位概率分布";
         });
@@ -1113,8 +1137,8 @@
           const pad = 28;
           const boxW = options.boxWidth ?? 1;
           const boxH = options.boxHeight ?? 1;
-          const scaleX = (width - 2 * pad) / Math.max(boxW, 1e-6);
-          const scaleY = (height - 2 * pad) / Math.max(boxH, 1e-6);
+          const scaleX = Math.min((width - 2 * pad) / boxW, (height - 2 * pad) / boxH);
+          const scaleY = scaleX;
 
           ctx.save();
           ctx.strokeStyle = "#3e3e42";
@@ -1123,11 +1147,13 @@
           ctx.restore();
 
           const color = options.color || COLORS.blue;
-          for (const point of positions || []) {
+          for (const [i, point] of (positions || []).entries()) {
+            const speedRatio = Math.min(1, (options.speeds?.[i] || 0) / 1000);
+            const particleColor = options.speeds ? `rgb(${55 + 165 * speedRatio}, ${148 + 72 * speedRatio}, ${255 - 85 * speedRatio})` : color;
             const x = pad + point[0] * scaleX;
             const y = pad + (boxH - point[1]) * scaleY;
             ctx.beginPath();
-            ctx.fillStyle = color;
+            ctx.fillStyle = particleColor;
             ctx.globalAlpha = 0.9;
             ctx.arc(x, y, options.radius || 3.1, 0, Math.PI * 2);
             ctx.fill();
@@ -1167,17 +1193,11 @@
             [0, 0, depth], [length, 0, depth], [0, boxHeight, depth], [length, boxHeight, depth],
           ].map(project);
 
-          let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-          for (const corner of corners) {
-            minX = Math.min(minX, corner.x);
-            maxX = Math.max(maxX, corner.x);
-            minY = Math.min(minY, corner.y);
-            maxY = Math.max(maxY, corner.y);
-          }
           const pad = 30;
+          const maximumLength = (data.chart_ranges?.volume_litre?.[1] || 3 * data.reference_volume_litre) / data.reference_volume_litre;
           const scale = Math.min(
-            (width - 2 * pad) / Math.max(maxX - minX, 1e-6),
-            (height - 2 * pad) / Math.max(maxY - minY, 1e-6)
+            (width - 2 * pad) / (maximumLength * cosY + depth * Math.abs(sinY)),
+            (height - 2 * pad) / (boxHeight * cosT + (maximumLength * Math.abs(sinY) + depth * cosY) * sinT)
           );
           const centerX = width / 2;
           const centerY = height / 2;
@@ -1202,8 +1222,7 @@
           // 粒子按速率着色：慢=蓝，快=黄
           const positions = data.positions || [];
           const speeds = data.speeds || [];
-          let maxSpeed = 1;
-          for (const speed of speeds) maxSpeed = Math.max(maxSpeed, speed);
+          const maxSpeed = 1000;
           for (let i = 0; i < positions.length; i += 1) {
             const point = map(project(positions[i]));
             const ratio = Math.min(1, (speeds[i] || 0) / maxSpeed);
@@ -1220,7 +1239,8 @@
 
           // Keep the visual scale distinction visible inside the scene itself.
           ctx.save();
-          const noteText = "相对显示体积 · 长度按 T/P 缩放";
+          const crossSectionLength = Math.cbrt(data.reference_volume_litre / 1000);
+          const noteText = `体积 ${data.volume_litre.toFixed(4)} L · 容器长度 ${(length * crossSectionLength * 100).toFixed(2)} cm · 固定比例`;
           ctx.font = "12px 'HeatLab CJK', 'Segoe UI', sans-serif";
           const noteWidth = ctx.measureText(noteText).width + 18;
           ctx.fillStyle = "rgba(18, 24, 32, 0.86)";
@@ -1496,7 +1516,7 @@
         function openModal(kind) {
           if (!ideal.data) return;
           modalKind.value = kind;
-          modalTitle.value = MODAL_TITLES[kind] || "图表";
+          modalTitle.value = kind === "pv" ? chartTitle.value : MODAL_TITLES[kind] || "图表";
           modalOpen.value = true;
           modalPlotReady = false;
           modalChart = null;
@@ -1535,6 +1555,21 @@
               Plotly.newPlot(host, traces, layout, config);
             }
           } else {
+            if (modalKind.value === "pv") {
+              if (!planarPvChart || !modalPvCanvas.value) return;
+              if (modalChart) {
+                modalChart.data.datasets = planarPvChart.data.datasets;
+                modalChart.options.scales = idealChartScales(data, data.chart?.kind === "p-t" ? "pt" : data.chart?.kind === "v-t" ? "vt" : "pv");
+                modalChart.update("none");
+              } else {
+                modalChart = createChartOn(modalPvCanvas, {
+                  type: "scatter",
+                  data: { datasets: planarPvChart.data.datasets },
+                  options: { scales: idealChartScales(data, data.chart?.kind === "p-t" ? "pt" : data.chart?.kind === "v-t" ? "vt" : "pv") },
+                }, "modal-primary");
+              }
+              return;
+            }
             const canvas = {
               pv: modalPvCanvas,
               pt: modalPtCanvas,
@@ -1566,7 +1601,7 @@
             datasets.push({
               type: "scatter",
               label: "当前状态",
-              data: [kind === "pv" ? { x: current.p, y: current.v }
+              data: [kind === "pv" ? { x: current.v, y: current.p }
                 : kind === "pt" ? { x: current.t, y: current.p }
                 : { x: current.t, y: current.v }],
               pointRadius: 5,
@@ -1574,11 +1609,7 @@
               borderColor: COLORS.strong,
               borderWidth: 1,
             });
-            const scales = {
-              pv: { x: axisScale("压强 P / atm"), y: axisScale("体积 V / L") },
-              pt: { x: axisScale("绝对温度 T / K"), y: axisScale("压强 P / atm") },
-              vt: { x: axisScale("绝对温度 T / K"), y: axisScale("体积 V / L") },
-            };
+            const scales = { pt: comparisonChartScales(data, "pt"), vt: comparisonChartScales(data, "vt") };
             if (modalChart) {
               modalChart.data.datasets = datasets;
               modalChart.options.scales = scales[kind];
@@ -1695,12 +1726,33 @@
 
         function buildPlanarDataset(family, kind) {
           if (kind === "pv") {
-            return family.P.map((p, j) => ({ x: p, y: family.V[j] }));
+            return family.P.map((p, j) => ({ x: family.V[j], y: p }));
           }
           if (kind === "pt") {
             return family.T.map((t, j) => ({ x: t, y: family.P[j] }));
           }
           return family.T.map((t, j) => ({ x: t, y: family.V[j] }));
+        }
+
+        function idealChartScales(data, kind) {
+          const ranges = data.chart_ranges;
+          const scale = (title, bounds) => ({ ...axisScale(title), min: bounds[0], max: bounds[1] });
+          return {
+            x: kind === "pv" ? scale("体积 V / L", ranges.volume_litre) : scale("绝对温度 T / K", ranges.temperature_k),
+            y: kind === "vt" ? scale("体积 V / L", ranges.volume_litre) : scale("压强 P / atm", ranges.pressure_atm),
+          };
+        }
+
+        function comparisonChartScales(data, kind) {
+          const scales = idealChartScales(data, kind);
+          const points = (data.planar[kind] || []).flatMap((family) => buildPlanarDataset(family, kind));
+          if (points.length) {
+            scales.x.min = Math.min(scales.x.min, ...points.map((point) => point.x * 0.95));
+            scales.x.max = Math.max(scales.x.max, ...points.map((point) => point.x * 1.05));
+            scales.y.min = Math.min(scales.y.min, ...points.map((point) => point.y * 0.95));
+            scales.y.max = Math.max(scales.y.max, ...points.map((point) => point.y * 1.05));
+          }
+          return scales;
         }
 
         function renderPlanarCharts(data) {
@@ -1726,34 +1778,20 @@
             : { p: data.pressure_atm, v: data.volume_litre, t: data.temperature_k };
 
           const primaryKind = data.chart?.kind === "p-t" ? "pt" : data.chart?.kind === "v-t" ? "vt" : "pv";
-          const processLine = (data.process_line && data.process_line.points) || [];
-          const historyLine = history.map((point) => primaryKind === "pt"
+          const processLine = (data.process_line_3d?.points || []).map((point) => primaryKind === "pt"
             ? { x: point[2], y: point[0] }
             : primaryKind === "vt"
               ? { x: point[2], y: point[1] }
-              : { x: point[0], y: point[1] });
+              : { x: point[1], y: point[0] });
 
           if (rebuild) {
             // 主图随实验切换：P-V、P-T、V-T 只保留当前实验需要的关系。
-            const primaryFamilies = primaryKind === "pt" ? planar.pt : primaryKind === "vt" ? planar.vt : planar.pv;
-            const primaryDatasets = primaryFamilies.map((family, i) => ({
-              type: "line",
-              label: primaryKind === "pv"
-                ? `等温 ${(family.T - 273.15).toFixed(0)} °C`
-                : primaryKind === "pt"
-                  ? `等容 V=${family.V.toFixed(2)} L`
-                  : `等压 P=${family.P.toFixed(2)} atm`,
-              data: buildPlanarDataset(family, primaryKind),
-              borderColor: palette[i % palette.length],
-              borderWidth: 1.2,
-              pointRadius: 0,
-              tension: 0,
-            }));
-            if ((primaryKind === "pv" ? processLine : historyLine).length > 1) {
+            const primaryDatasets = [];
+            if (processLine.length > 1) {
               primaryDatasets.push({
                 type: "line",
                 label: "当前过程",
-                data: primaryKind === "pv" ? processLine.map((pt) => ({ x: pt[0], y: pt[1] })) : historyLine,
+                data: processLine,
                 borderColor: "#ff9f43",
                 borderWidth: 2,
                 borderDash: [6, 4],
@@ -1766,7 +1804,7 @@
               label: "当前状态",
               data: [primaryKind === "pt" ? { x: currentPt.t, y: currentPt.p }
                 : primaryKind === "vt" ? { x: currentPt.t, y: currentPt.v }
-                : { x: currentPt.p, y: currentPt.v }],
+                : { x: currentPt.v, y: currentPt.p }],
               pointRadius: 4,
               backgroundColor: COLORS.blue,
               borderColor: COLORS.strong,
@@ -1777,10 +1815,7 @@
               type: "scatter",
               data: { datasets: primaryDatasets },
               options: {
-                scales: {
-                  x: axisScale(primaryKind === "pv" ? "压强 P / atm" : "绝对温度 T / K"),
-                  y: axisScale(primaryKind === "pv" ? "体积 V / L" : primaryKind === "pt" ? "压强 P / atm" : "体积 V / L"),
-                },
+                scales: idealChartScales(data, primaryKind),
               },
             }, "planar-primary-" + primaryKind);
 
@@ -1808,7 +1843,7 @@
               type: "scatter",
               data: { datasets: ptDatasets },
               options: {
-                scales: { x: axisScale("绝对温度 T / K"), y: axisScale("压强 P / atm") },
+                scales: comparisonChartScales(data, "pt"),
               },
             }, "planar-pt");
 
@@ -1836,7 +1871,7 @@
               type: "scatter",
               data: { datasets: vtDatasets },
               options: {
-                scales: { x: axisScale("绝对温度 T / K"), y: axisScale("体积 V / L") },
+                scales: comparisonChartScales(data, "vt"),
               },
             }, "planar-vt");
           } else {
@@ -1845,7 +1880,7 @@
               const ds = planarPvChart.data.datasets;
               ds[ds.length - 1].data = [primaryKind === "pt" ? { x: currentPt.t, y: currentPt.p }
                 : primaryKind === "vt" ? { x: currentPt.t, y: currentPt.v }
-                : { x: currentPt.p, y: currentPt.v }];
+                : { x: currentPt.v, y: currentPt.p }];
               planarPvChart.update("none");
             }
             if (planarPtChart && planarPtChart.data.datasets.length) {
@@ -1866,10 +1901,10 @@
           if (!scene) return;
           const { ctx, width, height } = scene;
           const pad = 34;
-          const boxL = pad;
-          const boxT = pad;
-          const boxW = width - 2 * pad;
-          const boxH = height - 2 * pad;
+          const boxW = Math.min(width, height) - 2 * pad;
+          const boxH = boxW;
+          const boxL = (width - boxW) / 2;
+          const boxT = (height - boxH) / 2;
           const mapX = (x) => boxL + x * boxW;
           const mapY = (y) => boxT + (1 - y) * boxH;
 
@@ -1965,11 +2000,10 @@
           }
 
           // 5) 花粉粒子：金色径向渐变大球 + 表面颗粒斑点 + 光晕 + 高光
-          //    半径系数刻意压小（0.6），避免盖住下方轨迹
           const pollenPos = data.pollen_position || [0.5, 0.5];
           const px = mapX(pollenPos[0]);
           const py = mapY(pollenPos[1]);
-          const pollenRadiusPx = Math.max(6, (data.pollen_radius || 0.08) * boxH * 0.6);
+          const pollenRadiusPx = (data.pollen_radius || 0.08) * boxH;
           ctx.save();
           ctx.shadowColor = "rgba(255, 200, 80, 0.5)";
           ctx.shadowBlur = 12;
@@ -2220,8 +2254,8 @@
           ctx.strokeRect(boardLeft, pegBottomY + 14, boardWidth, slotH - 14);
           // 分隔板
           ctx.fillStyle = "rgba(170, 150, 110, 0.5)";
-          for (let k = 0; k <= rows; k += 1) {
-            const sx = boardLeft + (k / rows) * boardWidth;
+          for (let k = 0; k <= rows + 1; k += 1) {
+            const sx = boardLeft + ((k - 0.5) / rows) * boardWidth;
             ctx.fillRect(sx - 1.5, pegBottomY + 14, 3, slotH - 14);
           }
           ctx.restore();
@@ -2232,7 +2266,7 @@
             const baseY = pegBottomY + 14 + slotH - 18;
             const slotY = baseY;
             data.counts.forEach((count, k) => {
-              const slotCX = boardLeft + ((k + 0.5) / rows) * boardWidth;
+              const slotCX = mapX(2 * k - rows);
               const perRow = 3;
               let placed = 0;
               let layer = 0;
@@ -2251,55 +2285,19 @@
             });
           }
 
-          // 6) 下落中的粒子：从漏斗内部开始 → 逐钉弧线下落（带高光弹珠）
+          // 6) 下落中的粒子：按当前碰撞行显示位置（带高光弹珠）
           //    只在动画进行中绘制；完成后粒子已落入狭槽（第 5 节画堆积），
           //    若继续画会在槽口上方来回振荡（原 bug）。
           //    粒子一开始就显示在漏斗内部（虚拟起点在漏斗腔内，而非小孔下方），
           //    从漏斗口随下落逐渐移到小孔，再落到第 0 行钉，不再跳过第一个钉。
           if (!data.finished) {
             const prefixes = data.path_prefixes || [];
-            const progress = 0.5 + 0.5 * Math.sin((performance.now() % 900) / 900 * Math.PI * 2);
             for (let i = 0; i < prefixes.length; i += 1) {
               const path = prefixes[i];
               if (!path || path.length < 1) continue;
-              // 节点序列：漏斗腔内起点（第 -2 层）→ 漏斗小孔（第 -1 层）→ 各钉层
-              // 起点 x 加一点随机散布，让粒子看起来像从漏斗里的一堆里出来
-              const scatterX = ((i * 37) % 17 - 8) * horizontalSpacing * 0.05;
-              const nodes = [
-                { x: 0 + scatterX, y: funnelTop + 6 },
-                { x: 0, y: funnelOpeningY },
-                ...path.map((x, r) => ({ x, y: mapY(r) })),
-              ];
-              // 轨迹残影：旧段暗淡 → 新段鲜亮
-              for (let s = 0; s < nodes.length - 1; s += 1) {
-                const from = nodes[s];
-                const to = nodes[s + 1];
-                const fromX = mapX(from.x);
-                const fromY = from.y;
-                const toX = mapX(to.x);
-                const toY = to.y;
-                const midX = (fromX + toX) / 2;
-                const midY = Math.max(fromY, toY) + verticalSpacing * 0.5;
-                ctx.save();
-                ctx.strokeStyle = `rgba(85, 160, 255, ${(0.06 + 0.34 * (s / Math.max(nodes.length - 1, 1))).toFixed(3)})`;
-                ctx.lineWidth = 1.4;
-                ctx.beginPath();
-                ctx.moveTo(fromX, fromY);
-                ctx.quadraticCurveTo(midX, midY, toX, toY);
-                ctx.stroke();
-                ctx.restore();
-              }
-              // 当前弹珠：在最后两个节点之间做弧线下落
-              const last = nodes[nodes.length - 1];
-              const prev = nodes[nodes.length - 2] || last;
-              const px0 = mapX(prev.x);
-              const py0 = prev.y;
-              const px1 = mapX(last.x);
-              const py1 = last.y;
-              const t = progress;
-              const bx = px0 + (px1 - px0) * t;
-              const by = py0 + (py1 - py0) * t + Math.sin(Math.PI * t) * verticalSpacing * 0.22;
-              drawMarble(ctx, bx, by, horizontalSpacing * 0.26, COLORS.blue);
+              const px1 = mapX(path[path.length - 1]);
+              const py1 = data.row === 0 ? funnelOpeningY : mapY(data.row);
+              drawMarble(ctx, px1, py1, horizontalSpacing * 0.26, COLORS.blue);
             }
           }
 
@@ -2390,7 +2388,7 @@
           } else if (topic.value === "brownian" && brownian.data) {
             drawBrownian(brownian.data);
           } else if (topic.value === "maxwell" && maxwell.data) {
-            drawParticles(maxwell.data.positions, { boxWidth: 1, boxHeight: 1, color: COLORS.purple });
+            drawParticles(maxwell.data.positions, { boxWidth: 1, boxHeight: 1, color: COLORS.purple, speeds: maxwell.data.speeds });
           } else if (topic.value === "galton" && galton.data) {
             drawGalton(galton.data);
           }
@@ -2404,10 +2402,8 @@
           if (!data) return;
           const theoryPoints = (data.pdf_v || []).map((v, i) => ({ x: v, y: data.pdf_f[i] }));
           const histPoints = (data.hist_v || []).map((v, i) => ({ x: v, y: data.hist_f[i] }));
-          const yMax = data.y_max_fixed || 0.0025;
-          const xMax = Math.max(0, ...(data.pdf_v || []));
-          const histXMax = Math.max(0, ...(data.hist_v || []));
-          const xLimit = Math.max(xMax, histXMax) * 1.05;
+          const yMax = (data.y_max_fixed || 0.0025) * 1.15;
+          const xLimit = data.x_max_fixed;
 
           if (!chart || chart._heatTopic !== "maxwell") {
             ensureChart({
@@ -2453,7 +2449,7 @@
           // 水平速度分量 v_x 的几率密度分布（文档要求的“几率~水平速度曲线”）
           const compTheoryPoints = (data.component_pdf_v || []).map((v, i) => ({ x: v, y: data.component_pdf_f[i] }));
           const compHistPoints = (data.component_hist_v || []).map((v, i) => ({ x: v, y: data.component_hist_f[i] }));
-          const compYMax = data.component_y_max_fixed || 0.0014;
+          const compYMax = (data.component_y_max_fixed || 0.0014) * 1.15;
           const compXMax = Math.max(0, ...(data.component_hist_v || []), ...(data.component_pdf_v || [])) * 1.05;
           if (!componentChart || componentChart._heatTopic !== "maxwell-component") {
             ensureComponentChart({
@@ -2482,8 +2478,8 @@
               },
               options: {
                 scales: {
-                  x: { ...axisScale("水平速度分量 v_x / (m·s⁻¹)"), type: "linear" },
-                  y: { ...axisScale("水平分量概率密度 f(v_x)"), min: 0, max: compYMax },
+                  x: { ...axisScale("水平速度分量 v_x / (m·s⁻¹)"), type: "linear", min: -data.component_x_max_fixed, max: data.component_x_max_fixed },
+                  y: { ...axisScale("水平速度分量概率密度 f(v_x) / (s·m⁻¹)"), min: 0, max: compYMax },
                 },
               },
             }, "maxwell-component");
@@ -2499,28 +2495,24 @@
         function renderBrownianSpeedChart() {
           const data = brownian.data;
           if (!data || !data.speed_hist_v) return;
-          const labels = data.speed_hist_v.map((value) => value.toFixed(2));
+          const histPoints = data.speed_hist_v.map((value, i) => ({ x: value, y: data.speed_hist_f[i] }));
           // 理论 2-D 麦克斯韦：f(v) = (v/σ²)·exp(-v²/2σ²)，σ 由液体温度决定
           const sigma = data.liquid_sigma || 1;
-          const theory = labels.map((label) => {
-            const v = Number(label);
-            return (v / (sigma * sigma)) * Math.exp(-(v * v) / (2 * sigma * sigma));
-          });
+          const theory = data.speed_theory_v.map((value, i) => ({ x: value, y: data.speed_theory_f[i] }));
           if (!componentChart || componentChart._heatTopic !== "brownian-speed") {
             ensureComponentChart({
               data: {
-                labels,
                 datasets: [
                   {
                     type: "bar",
                     label: "液体分子样本",
-                    data: data.speed_hist_f,
+                    data: histPoints,
                     backgroundColor: "rgba(96, 170, 255, 0.4)",
                     borderWidth: 0,
                   },
                   {
                     type: "line",
-                    label: "理论二维麦克斯韦速率概率密度",
+                    label: "液体分子理论二维麦克斯韦速率概率密度",
                     data: theory,
                     borderColor: COLORS.green,
                     pointRadius: 0,
@@ -2530,15 +2522,14 @@
               },
               options: {
                 scales: {
-                  x: axisScale("速率 v（无量纲）"),
-                  y: axisScale("速率概率密度 f(v)"),
+                  x: { ...axisScale("液体分子速率 v（无量纲）"), type: "linear", min: 0, max: 8 * sigma },
+                  y: { ...axisScale("液体分子速率概率密度 f(v)"), min: 0, max: 30 / (8 * sigma) * 1.05 },
                 },
               },
             }, "brownian-speed");
           } else {
             updateComponentChart((c) => {
-              c.data.labels = labels;
-              c.data.datasets[0].data = data.speed_hist_f;
+              c.data.datasets[0].data = histPoints;
               c.data.datasets[1].data = theory;
             });
           }
@@ -2548,31 +2539,31 @@
           const data = ideal.data;
           if (!data || !chartCanvas.value) return;
           const points = data.chart?.points || [];
-          const labels = points.map((point) => Number(point[0]).toFixed(1));
-          const leftValues = points.map((point) => point[1]);
-          const rightValues = points.map((point) => point[2]);
+          const leftValues = points.map((point) => ({ x: point[0], y: point[1] }));
+          const rightValues = points.map((point) => ({ x: point[0], y: point[2] }));
+          const timeMaximum = Math.max(1, points.length ? points[points.length - 1][0] * 1.05 : 0);
           if (!chart || chart._heatTopic !== "ideal-gas-heat-exchange") {
             ensureChart({
               type: "line",
               data: {
-                labels,
                 datasets: [
-                  { label: "左室温度", data: leftValues, borderColor: COLORS.orange, pointRadius: 0, tension: 0.18 },
-                  { label: "右室温度", data: rightValues, borderColor: COLORS.blue, pointRadius: 0, tension: 0.18 },
+                  { label: "左室温度", data: leftValues, borderColor: COLORS.orange, pointRadius: 0, tension: 0 },
+                  { label: "右室温度", data: rightValues, borderColor: COLORS.blue, pointRadius: 0, tension: 0 },
                 ],
               },
               options: {
                 scales: {
-                  x: axisScale("时间 t / s"),
+                  x: { ...axisScale("时间 t / s（本次实验完整过程）"), type: "linear", min: 0, max: timeMaximum },
                   y: { ...axisScale("温度 / °C"), min: 0, max: 100 },
                 },
               },
             }, "ideal-gas-heat-exchange");
           } else {
             updateChart((instance) => {
-              instance.data.labels = labels;
               instance.data.datasets[0].data = leftValues;
               instance.data.datasets[1].data = rightValues;
+              instance.options.scales.x.min = 0;
+              instance.options.scales.x.max = timeMaximum;
             });
           }
         }
@@ -2599,53 +2590,12 @@
             }
             renderPlanarCharts(ideal.data);
           } else if (topic.value === "brownian" && brownian.data) {
-            const data = brownian.data;
-            const labels = (data.msd_lag || []).map((value) => value.toFixed(3));
-            const theoryMsd = (data.msd_lag || []).map((value) => 4 * (data.theoretical_D || 0) * value);
-            if (!chart || chart._heatTopic !== "brownian") {
-              ensureChart({
-                type: "line",
-                data: {
-                  labels,
-                  datasets: [
-                    {
-                      label: "均方位移（MSD）",
-                      data: data.msd || [],
-                      borderColor: COLORS.blue,
-                      backgroundColor: "rgba(55, 148, 255, 0.10)",
-                      tension: 0.25,
-                      pointRadius: 0,
-                      fill: true,
-                    },
-                    {
-                      label: "连续介质参考 4Dt",
-                      data: theoryMsd,
-                      borderColor: COLORS.green,
-                      borderDash: [5, 4],
-                      pointRadius: 0,
-                      tension: 0,
-                    },
-                  ],
-                },
-                options: {
-                  scales: {
-                    x: axisScale("滞后时间 t"),
-                    y: axisScale("均方位移（MSD）"),
-                  },
-                },
-              }, "brownian");
-            } else {
-              updateChart((c) => {
-                c.data.labels = labels;
-                c.data.datasets[0].data = data.msd || [];
-                c.data.datasets[1].data = theoryMsd;
-              });
-            }
             renderBrownianSpeedChart();
           } else if (topic.value === "maxwell" && maxwell.data && maxwell.data.hist_v) {
             renderMaxwellCharts();
           } else if (topic.value === "galton" && galton.data) {
             const labels = (galton.data.bins || []).map(String);
+            const probabilities = galton.data.finished ? galton.data.probabilities : labels.map(() => 0);
             if (!chart || chart._heatTopic !== "galton") {
               ensureChart({
                 data: {
@@ -2654,7 +2604,7 @@
                     {
                       type: "bar",
                       label: "模拟",
-                      data: galton.data.probabilities,
+                      data: probabilities,
                       backgroundColor: "rgba(55, 148, 255, 0.45)",
                       borderWidth: 0,
                     },
@@ -2671,14 +2621,14 @@
                 options: {
                   scales: {
                     x: axisScale("槽位位置 k（向右碰撞次数）"),
-                    y: axisScale("概率"),
+                    y: { ...axisScale("概率"), min: 0, max: 1 },
                   },
                 },
               }, "galton");
-            } else if (galton.data.finished) {
+            } else {
               updateChart((c) => {
                 c.data.labels = labels;
-                c.data.datasets[0].data = galton.data.probabilities;
+                c.data.datasets[0].data = probabilities;
                 c.data.datasets[1].data = galton.data.theoretical;
               });
             }
@@ -2717,6 +2667,7 @@
 
         function debounceParams(key, fn, wait = 100) {
           return (...args) => {
+            requestGeneration += 1;
             const previous = pendingParams.get(key);
             if (previous) clearTimeout(previous);
             pendingParams.set(key, setTimeout(() => {
@@ -3109,15 +3060,21 @@
           busy.value = true;
           const generation = requestGeneration;
           try {
+            let gasSteps = 1;
+            if (topic.value === "ideal-gas" || topic.value === "maxwell") {
+              const frameDuration = prefersReducedMotion.value ? 120 : 33;
+              const elapsed = Math.min(deltaMs, 250) + gasStepRemainder;
+              gasSteps = Math.max(1, Math.floor(elapsed / frameDuration));
+              gasStepRemainder = Math.max(0, elapsed - gasSteps * frameDuration);
+            }
             if (topic.value === "ideal-gas") {
               if (sweep.enabled) {
                 await sweepStep(deltaMs);
                 if (generation !== requestGeneration) return;
               }
-              const payload = await postJson("/api/live/ideal-gas/step", { steps: 1 });
+              const payload = await postJson("/api/live/ideal-gas/step", { steps: gasSteps });
               if (generation !== requestGeneration) return;
               ideal.data = payload.data;
-              syncIdealControls(payload.data);
               idealFrame += 1;
               // 粒子场景每帧重绘；相图（3D/平面）每 4 帧刷新即可
               if (idealFrame % 4 === 0) chartDirty = true;
@@ -3125,7 +3082,7 @@
               const payload = await postJson("/api/live/brownian/step", { steps: 2 });
               if (generation !== requestGeneration) return;
               brownian.data = payload.data;
-              // 场景每帧渲染，图表（MSD/速度分布）每 6 帧刷新一次即可
+              // 场景每帧渲染，液体速率分布每 6 帧刷新一次。
               brownianFrame += 1;
               if (brownianFrame % 6 === 0) chartDirty = true;
             } else if (topic.value === "maxwell") {
@@ -3133,15 +3090,9 @@
                 await maxwellSweepStep(deltaMs);
                 if (generation !== requestGeneration) return;
               }
-              const payload = await postJson("/api/live/maxwell/step", { steps: 1 });
+              const payload = await postJson("/api/live/maxwell/step", { steps: gasSteps });
               if (generation !== requestGeneration) return;
-              const histV = maxwell.data?.hist_v;
-              const histF = maxwell.data?.hist_f;
-              maxwell.data = payload.data;
-              if (histV) {
-                maxwell.data.hist_v = histV;
-                maxwell.data.hist_f = histF;
-              }
+              maxwell.data = { ...maxwell.data, ...payload.data };
             } else if (topic.value === "galton") {
               if (galton.data && !galton.data.finished) {
                 const payload = await postJson("/api/live/galton/step", { steps: 1 });
@@ -3164,6 +3115,8 @@
 
         function loop(timestamp) {
           rafId = requestAnimationFrame(loop);
+          if (paused.value) { lastStepAt = timestamp; gasStepRemainder = 0; return; }
+          if (busy.value) return;
           // 降低刷新节奏；系统开启「减少动态效果」时进一步放慢
           const baseInterval = topic.value === "galton" ? 90 : 33;
           const interval = prefersReducedMotion.value ? Math.max(baseInterval * 3, 120) : baseInterval;
@@ -3354,6 +3307,7 @@
           sweepRateLabel,
           maxwellSweepRateLabel,
           sceneTitle,
+          gasSpeedComparisons,
           chartTitle,
           componentChartTitle,
           statusClass,

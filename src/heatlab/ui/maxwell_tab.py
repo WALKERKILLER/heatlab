@@ -36,6 +36,7 @@ class MaxwellTab(QWidget):
             self.model.positions[:, 0], self.model.positions[:, 1],
             s=22, c=speeds, cmap="plasma",
         )
+        self.particles.set_clim(0, 1000)
         self.ax_box.set_xlim(0, 1)
         self.ax_box.set_ylim(0, 1)
         self.ax_box.set_aspect("equal", adjustable="box")
@@ -62,11 +63,11 @@ class MaxwellTab(QWidget):
             comp_velocity, comp_density, color=ACCENT_2, linewidth=2.0, label="水平速度分量理论高斯分布"
         )
         self.ax_component.set_xlabel(r"水平速度分量 $v_x$ / (m·s$^{-1}$)")
-        self.ax_component.set_ylabel("水平分量概率密度 f(v_x)")
+        self.ax_component.set_ylabel("水平速度分量概率密度 f(v_x) / (s·m⁻¹)")
         self.ax_component.set_title("水平速度分量概率密度")
 
         # ---- 控制面板 ----
-        panel = ControlPanel("麦克斯韦速率分布", lead="对照气体分子速率概率密度与水平速度分量的理论概率密度和样本。")
+        panel = ControlPanel("气体分子速率的麦克斯韦分布", lead="对照气体分子速率概率密度与水平速度分量的理论概率密度和样本。")
         self.temperature = LabeledSlider(
             "温度", 0, 100, 20, formatter=lambda v: f"{v:.0f} °C"
         )
@@ -186,7 +187,7 @@ class MaxwellTab(QWidget):
         self.particles.set_offsets(self.model.positions)
         speeds = self.model.speeds
         self.particles.set_array(speeds)
-        self.particles.set_clim(float(speeds.min()), float(speeds.max()))
+        self.particles.set_clim(0, 1000)
         self._sweep_step()
         self.scene_canvas.draw_idle()
 
@@ -204,8 +205,8 @@ class MaxwellTab(QWidget):
             color=ACCENT_3,
             label="随机样本",
         )
-        self.ax_dist.relim()
-        self.ax_dist.autoscale_view()
+        self.ax_dist.set_xlim(0, self.model.fixed_speed_limit)
+        self.ax_dist.set_ylim(0, self.model.fixed_pdf_peak * 1.15)
         style_legend(self.ax_dist.legend(loc="upper right"))
 
         # 水平分量 v_x：高斯理论曲线 + 样本直方图（文档要求的"几率~水平速度曲线"）
@@ -221,8 +222,8 @@ class MaxwellTab(QWidget):
             color=ACCENT,
             label="水平速度分量样本",
         )
-        self.ax_component.relim()
-        self.ax_component.autoscale_view()
+        self.ax_component.set_xlim(-self.model.fixed_component_limit, self.model.fixed_component_limit)
+        self.ax_component.set_ylim(0, self.model.fixed_component_peak * 1.15)
         style_legend(self.ax_component.legend(loc="upper right"))
 
         self.ax_box.set_title(f"固定体积内分子运动｜温度={self.model.state.temperature_c:.0f} °C")

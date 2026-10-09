@@ -57,7 +57,7 @@ class GaltonTab(QWidget):
         )
         self.ax_hist.set_xlabel("槽位位置 k（向右碰撞次数）")
         self.ax_hist.set_ylabel("概率")
-        self.ax_hist.set_ylim(0, 0.35)
+        self.ax_hist.set_ylim(0, 1)
         style_legend(self.ax_hist.legend(loc="upper right"))
 
         # ---- 控制面板 ----
@@ -71,7 +71,7 @@ class GaltonTab(QWidget):
         self.run_button.clicked.connect(self.start_drop)
         panel.add(self.run_button)
 
-        self.metrics = MetricGrid("样本数", "槽位位置均值", "槽位位置方差")
+        self.metrics = MetricGrid("样本数", "向右偏转次数的平均值", "向右偏转次数的方差")
         panel.add(self.metrics)
         panel.finish()
 
@@ -126,7 +126,14 @@ class GaltonTab(QWidget):
         self.particle_scatter.set_offsets(start)
         self.particle_highlight.set_offsets(start)
         self.run_button.setEnabled(False)
-        self.metrics.set_values({"样本数": "正在投放……"})
+        self.metrics.set_values({
+            "样本数": "正在投放……",
+            "向右偏转次数的平均值": "等待落槽",
+            "向右偏转次数的方差": "等待落槽",
+        })
+        for patch in self.bars:
+            patch.set_height(0.0)
+        self.chart_canvas.draw_idle()
         self.timer.start()
 
     def set_animation_paused(self, paused: bool) -> None:
@@ -153,10 +160,6 @@ class GaltonTab(QWidget):
     def _finish_batch(self) -> None:
         assert self.batch is not None
         rows = self.model.params.rows
-        y = -np.arange(rows + 1)
-        for path in self.batch.paths:
-            line, = self.ax_board.plot(path, y, color=ACCENT_3, alpha=0.10, linewidth=0.8)
-            self.trail_lines.append(line)
         # 狭槽内 hexagonal 堆积粒子（对齐开源 bean machine 的落槽呈现）
         ball_r = 0.28
         slot_bottom = -rows - 1.9
@@ -188,14 +191,13 @@ class GaltonTab(QWidget):
             patch.set_height(float(probability))
         bins = np.arange(rows + 1)
         self.theory_line.set_data(bins, self.batch.theoretical)
-        ymax = max(0.12, float(max(self.batch.probabilities.max(), self.batch.theoretical.max())) * 1.25)
-        self.ax_hist.set_ylim(0, ymax)
+        self.ax_hist.set_ylim(0, 1)
         sample_mean = float(np.average(bins, weights=self.batch.counts))
         sample_var = float(np.average((bins - sample_mean) ** 2, weights=self.batch.counts))
         self.metrics.set_values({
             "样本数": str(int(self.batch.counts.sum())),
-            "槽位位置均值": f"{sample_mean:.3f}（理论 6.000）",
-            "槽位位置方差": f"{sample_var:.3f}（理论 3.000）",
+            "向右偏转次数的平均值": f"{sample_mean:.3f} 次（理论 {self.model.params.rows / 2:.3f}）",
+            "向右偏转次数的方差": f"{sample_var:.3f} 次²（理论 {self.model.params.rows / 4:.3f}）",
         })
         self.run_button.setEnabled(True)
         self.chart_canvas.draw_idle()

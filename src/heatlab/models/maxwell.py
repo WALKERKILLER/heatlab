@@ -9,6 +9,7 @@ from numpy.random import Generator
 from scipy.stats import maxwell, norm
 
 from heatlab.constants import BOLTZMANN, CELSIUS_OFFSET, NITROGEN_MOLECULE_MASS_KG
+from heatlab.models.collisions import scatter_gas_particles
 
 
 def _reflect_unit_interval(
@@ -17,7 +18,7 @@ def _reflect_unit_interval(
     axis: int,
 ) -> None:
     """Reflect particles in [0, 1], including multiple wall crossings."""
-    raw = positions[:, axis]
+    raw = positions[:, axis].copy()
     folded = np.mod(raw, 2.0)
     positions[:, axis] = np.where(folded <= 1.0, folded, 2.0 - folded)
     crossed_odd_times = np.mod(np.floor(raw), 2.0) != 0.0
@@ -74,9 +75,7 @@ class MaxwellModel:
 
     @property
     def display_velocities(self) -> np.ndarray:
-        rms = self.rms_speed
-        # 显示速度系数 1.5：让粒子以热速率尺度活跃运动（真实气体观感），
-        # 而非 0.55 的“慢漂移”。仅影响可视化，不改变物理状态。
+        rms = np.sqrt(3.0 * BOLTZMANN * (CELSIUS_OFFSET + 20.0) / self.state.molecule_mass_kg)
         return self.velocities_si[:, :2] / max(rms, np.finfo(float).tiny) * 1.5
 
     def step(self, dt: float = 0.020) -> None:
@@ -85,6 +84,16 @@ class MaxwellModel:
         self.positions += self.display_velocities * dt
         for axis in (0, 1):
             _reflect_unit_interval(self.positions, self.velocities_si, axis)
+        scatter_gas_particles(self.positions, self.velocities_si)
+
+    @property
+    def fixed_speed_limit(self) -> float:
+        hottest_scale = np.sqrt(BOLTZMANN * (CELSIUS_OFFSET + 100.0) / self.state.molecule_mass_kg)
+        return float(maxwell.ppf(0.999999, scale=hottest_scale))
+
+    @property
+    def fixed_component_limit(self) -> float:
+        return float(4.0 * np.sqrt(BOLTZMANN * (CELSIUS_OFFSET + 100.0) / self.state.molecule_mass_kg))
 
     def distribution_curve(self, points: int = 500) -> tuple[np.ndarray, np.ndarray]:
         vmax = maxwell.ppf(0.999999, scale=self.state.scale)

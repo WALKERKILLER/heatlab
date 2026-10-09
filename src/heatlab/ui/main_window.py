@@ -67,7 +67,7 @@ class MainWindow(QMainWindow):
             "热力学",
         )
         self.tabs.addTab(BrownianTab(BrownianModel(manager.stream("brownian"))), "布朗运动")
-        self.tabs.addTab(MaxwellTab(MaxwellModel(manager.stream("maxwell"))), "麦克斯韦分布")
+        self.tabs.addTab(MaxwellTab(MaxwellModel(manager.stream("maxwell"))), "气体分子速率的麦克斯韦分布")
         self.tabs.addTab(GaltonTab(GaltonModel(manager.stream("galton"))), "伽尔顿板")
         self.top_bar.seed_spin.setValue(seed)
         self.status_bar.set_seed(seed)
