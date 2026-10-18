@@ -27,6 +27,7 @@
 
 ## 目录
 
+- [实验视频](#实验视频)
 - [功能](#功能)
 - [仓库结构](#仓库结构)
 - [环境要求](#环境要求)
@@ -40,6 +41,33 @@
 - [贡献](#贡献)
 - [许可证](#许可证)
 - [引用](#引用)
+
+## 实验视频
+
+点击缩略图打开对应实验的交互视频。10 段视频均录自 v0.3.2，时长约 36～59 秒，无配音。网络版采用 1280×800、20 fps 的 H.264 MP4，合计约 14 MB，支持加载后开始播放。若当前 Markdown 阅读器不支持播放，可下载视频后观看。
+
+<table>
+  <tr>
+    <td width="50%" align="center"><a href="assets/demos/01-热力学-温度的微观意义.mp4"><img src="assets/demos/01-热力学-温度的微观意义.jpg" width="420" alt="播放热力学：温度的微观意义交互视频"></a><br><strong>热力学 · 温度的微观意义</strong><br>54 秒 · <a href="assets/demos/01-热力学-温度的微观意义.mp4">点击播放</a></td>
+    <td width="50%" align="center"><a href="assets/demos/02-热力学-压强的微观意义.mp4"><img src="assets/demos/02-热力学-压强的微观意义.jpg" width="420" alt="播放热力学：压强的微观意义交互视频"></a><br><strong>热力学 · 压强的微观意义</strong><br>59 秒 · <a href="assets/demos/02-热力学-压强的微观意义.mp4">点击播放</a></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="assets/demos/03-热力学-等温过程.mp4"><img src="assets/demos/03-热力学-等温过程.jpg" width="420" alt="播放热力学：等温过程交互视频"></a><br><strong>热力学 · 等温过程</strong><br>51 秒 · <a href="assets/demos/03-热力学-等温过程.mp4">点击播放</a></td>
+    <td align="center"><a href="assets/demos/04-热力学-等容过程.mp4"><img src="assets/demos/04-热力学-等容过程.jpg" width="420" alt="播放热力学：等容过程交互视频"></a><br><strong>热力学 · 等容过程</strong><br>53 秒 · <a href="assets/demos/04-热力学-等容过程.mp4">点击播放</a></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="assets/demos/05-热力学-等压过程.mp4"><img src="assets/demos/05-热力学-等压过程.jpg" width="420" alt="播放热力学：等压过程交互视频"></a><br><strong>热力学 · 等压过程</strong><br>51 秒 · <a href="assets/demos/05-热力学-等压过程.mp4">点击播放</a></td>
+    <td align="center"><a href="assets/demos/06-热力学-两室热交换.mp4"><img src="assets/demos/06-热力学-两室热交换.jpg" width="420" alt="播放热力学：两室热交换交互视频"></a><br><strong>热力学 · 两室热交换</strong><br>37 秒 · <a href="assets/demos/06-热力学-两室热交换.mp4">点击播放</a></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="assets/demos/07-热力学-绝热过程.mp4"><img src="assets/demos/07-热力学-绝热过程.jpg" width="420" alt="播放热力学：绝热过程交互视频"></a><br><strong>热力学 · 绝热过程</strong><br>52 秒 · <a href="assets/demos/07-热力学-绝热过程.mp4">点击播放</a></td>
+    <td align="center"><a href="assets/demos/08-布朗运动.mp4"><img src="assets/demos/08-布朗运动.jpg" width="420" alt="播放布朗运动交互视频"></a><br><strong>布朗运动</strong><br>42 秒 · <a href="assets/demos/08-布朗运动.mp4">点击播放</a></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="assets/demos/09-气体分子速率的麦克斯韦分布.mp4"><img src="assets/demos/09-气体分子速率的麦克斯韦分布.jpg" width="420" alt="播放气体分子速率的麦克斯韦分布交互视频"></a><br><strong>气体分子速率的麦克斯韦分布</strong><br>36 秒 · <a href="assets/demos/09-气体分子速率的麦克斯韦分布.mp4">点击播放</a></td>
+    <td align="center"><a href="assets/demos/10-伽尔顿板.mp4"><img src="assets/demos/10-伽尔顿板.jpg" width="420" alt="播放伽尔顿板交互视频"></a><br><strong>伽尔顿板</strong><br>44 秒 · <a href="assets/demos/10-伽尔顿板.mp4">点击播放</a></td>
+  </tr>
+</table>
 
 ## 功能
 
