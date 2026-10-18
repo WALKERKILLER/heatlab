@@ -62,7 +62,7 @@
   --font: "HeatLab CJK", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --mono: "Cascadia Code", "SF Mono", "Consolas", "Courier New", ui-monospace, monospace;
 
-  --titlebar-h: 42px;
+  --titlebar-h: 76px;
   --tabbar-h: 36px;
   --statusbar-h: 28px;
   --sidebar-w: 320px;
@@ -142,10 +142,12 @@ body[data-standalone="true"] #app {
 
 /* ---- title bar (lab console brand + command tray) ---- */
 .topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 36px 36px;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 0 14px;
   height: var(--titlebar-h);
   min-height: var(--titlebar-h);
   padding: 0 12px 0 10px;
@@ -153,6 +155,11 @@ body[data-standalone="true"] #app {
   border-bottom: 1px solid var(--border-soft);
   user-select: none;
 }
+.platform-name { font-size: 14px; font-weight: 600; line-height: 1.4; }
+.experiment-title { grid-column: 1 / -1; grid-row: 2; margin: 0; text-align: center; font-size: 19px; line-height: 1.4; color: var(--text-strong); }
+.topbar-left { grid-column: 1; grid-row: 1; justify-content: flex-start; }
+.topbar-right { grid-column: 2; grid-row: 1; justify-self: end; }
+.platform-logo { display: block; flex-shrink: 0; width: 32px; height: 32px; padding: 2px; object-fit: contain; background: #fff; border-radius: 50%; }
 
 .topbar-left,
 .topbar-right {
@@ -1282,6 +1289,12 @@ input[type="range"]:focus-visible::-webkit-slider-thumb {
 .gas-speed-track { height: 7px; background: var(--bg-sidebar); }
 .gas-speed-track i { display: block; height: 100%; background: #3794ff; }
 .gas-speed-track .gas-speed-reference { background: #89929e; }
+.gas-speed-race { position: relative; height: 12px; margin-right: 8px; border-bottom: 1px solid var(--border); }
+.gas-speed-race i { position: absolute; left: 0; top: 1px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: gas-speed-travel 4s linear infinite alternate; }
+.gas-speed-race .gas-speed-reference { background: #89929e; }
+.motion-paused .gas-speed-race i { animation-play-state: paused; }
+@keyframes gas-speed-travel { from { left: 0; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .gas-speed-race i { animation-play-state: paused; } }
 .gas-speed-comparison p { margin: 8px 0 0; color: var(--text-dim); line-height: 1.5; }
 
 .card-chrome {

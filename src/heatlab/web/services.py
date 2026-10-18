@@ -126,7 +126,7 @@ def brownian_snapshot(
 
 
 def _liquid_speed_distribution(
-    speeds: np.ndarray, sigma: float, bins: int = 30
+    speeds: np.ndarray, sigma: float, bins: int | None = None
 ) -> dict[str, Any]:
     """2-D Maxwell-Boltzmann histogram (f(v)=v/σ²·exp(-v²/2σ²)) for liquids."""
 
@@ -134,7 +134,9 @@ def _liquid_speed_distribution(
         return {"speed_hist_v": [], "speed_hist_f": [], "speed_theory_v": [], "speed_theory_f": []}
     # Keep the 1–100 UI range useful: a single molecule still has a valid
     # speed sample, so use a fixed positive range instead of dropping it.
-    upper = 8.0 * sigma
+    upper = 4.0 * sigma
+    if bins is None:
+        bins = int(np.clip(np.sqrt(len(speeds)), 6, 20))
     counts, bin_edges = np.histogram(speeds, bins=bins, range=(0.0, upper))
     # Normalize by all samples, so an off-axis tail is not redistributed into visible bins.
     hist_counts = counts / (len(speeds) * np.diff(bin_edges))

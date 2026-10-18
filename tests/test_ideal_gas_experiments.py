@@ -7,6 +7,39 @@ from heatlab.web.app import create_app
 from heatlab.web.sessions import LiveSession
 
 
+def test_experiments_restore_independent_models_and_heat_history() -> None:
+    session = LiveSession(seed=42)
+    session.set_ideal(None, 1.0, experiment_mode="temperature-micro")
+    session.set_ideal(90.0, 1.0, experiment_mode="temperature-micro")
+    session.step_ideal(3)
+    original = session.ideal
+    positions = original.positions.copy()
+    session.set_ideal(None, 1.0, experiment_mode="isothermal")
+    assert session.ideal is not original
+    assert session.ideal.state.temperature_c == 20.0
+    session.set_ideal(None, 1.0, experiment_mode="heat-exchange")
+    session.step_ideal(5)
+    history = list(session.heat_exchange.temperature_history)
+    session.set_ideal(None, 1.0, experiment_mode="temperature-micro")
+    assert session.ideal is original
+    assert session.ideal.state.temperature_c == 90.0
+    assert np.array_equal(session.ideal.positions, positions)
+    session.set_ideal(None, 1.0, experiment_mode="heat-exchange")
+    assert session.heat_exchange.temperature_history == history
+    session.reset()
+    assert set(session._ideal_experiments) == {"free"}
+
+
+def test_unknown_experiment_does_not_create_or_switch_models() -> None:
+    session = LiveSession(seed=42)
+    original = session.ideal
+    with np.testing.assert_raises(ValueError):
+        session.set_ideal(None, 1.0, experiment_mode="unknown")
+    assert session.ideal is original
+    assert session.ideal_experiment_mode == "free"
+    assert set(session._ideal_experiments) == {"free"}
+
+
 def test_micro_and_process_modes_expose_one_independent_control() -> None:
     model = IdealGasModel(RandomManager(21).stream("ideal"))
 
@@ -114,24 +147,24 @@ def test_session_does_not_leak_first_law_energy_into_isothermal_mode() -> None:
     session.set_ideal(20.0, 1.0, experiment_mode="first-law", volume_litre=reference * 2.0)
     assert session.snapshot_ideal()["observables"]["work_by_gas_j"] > 0.0
 
-    previous_temperature = session.ideal.state.temperature_c
     session.set_ideal(None, 1.0, experiment_mode="isothermal", volume_litre=session.ideal.state.volume_litre)
     snapshot = session.snapshot_ideal()
-    assert np.isclose(session.ideal.state.temperature_c, previous_temperature)
+    assert np.isclose(session.ideal.state.temperature_c, 20.0)
     assert snapshot["observables"]["work_by_gas_j"] == 0.0
     assert snapshot["observables"]["heat_added_j"] == 0.0
 
 
-def test_switching_through_heat_exchange_starts_a_fresh_adiabatic_anchor() -> None:
+def test_switching_through_heat_exchange_preserves_adiabatic_anchor() -> None:
     session = LiveSession(25)
     reference = session.ideal.reference_volume_litre
     session.set_ideal(20.0, 1.0, experiment_mode="first-law", volume_litre=reference * 2.0)
+    previous = session.snapshot_ideal()["observables"].copy()
     session.set_ideal(20.0, 1.0, experiment_mode="heat-exchange")
     current_volume = session.ideal.state.volume_litre
     session.set_ideal(None, 1.0, experiment_mode="first-law", volume_litre=current_volume)
     snapshot = session.snapshot_ideal()
-    assert np.isclose(snapshot["observables"]["work_by_gas_j"], 0.0, atol=1.0e-14)
-    assert np.isclose(snapshot["observables"]["delta_internal_energy_j"], 0.0, atol=1.0e-14)
+    assert np.isclose(snapshot["observables"]["work_by_gas_j"], previous["work_by_gas_j"])
+    assert np.isclose(snapshot["observables"]["delta_internal_energy_j"], previous["delta_internal_energy_j"])
 
 
 def test_reflection_keeps_particles_inside_for_large_time_steps() -> None:

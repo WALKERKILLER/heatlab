@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+  <link rel="icon" type="image/svg+xml" href="/static/tongji.svg">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="HeatLab 热学科学计算实时实验台：理想气体、布朗运动、麦克斯韦分布与伽尔顿板。" />
@@ -19,29 +20,16 @@
     <header class="topbar" role="banner">
       <div class="topbar-left">
         <div class="brand-block">
-          <!-- 热学品牌标：深色热板 + 冷暖双色环 + 上升热浪，避免通用蓝方块 app badge -->
-          <div class="brand-mark" aria-hidden="true">
-            <span class="brand-mark-glow"></span>
-            <span class="brand-mark-plate">
-              <svg class="brand-icon" viewBox="0 0 24 24" width="16" height="16" focusable="false">
-                <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M8 19c0-3.2-1.6-5.2-1.6-8.2 0-1.7.7-3 1.9-3.9" />
-                  <path d="M12 20c0-3.8-2-6.1-2-9.6 0-2.1.9-3.7 2.3-4.8" />
-                  <path d="M16 19c0-3.2-1.6-5.2-1.6-8.2 0-1.7.7-3 1.9-3.9" />
-                </g>
-              </svg>
-            </span>
-          </div>
+          <img class="platform-logo" src="/static/tongji.svg" alt="同济大学校徽" width="34" height="36">
           <div class="brand-copy">
             <div class="brand-title" id="app-title">
-              <span class="brand-name">HeatLab</span>
-              <span class="brand-sup">Workbench</span>
+              <span class="platform-name">同济大学物理探索实验数字化平台</span>
             </div>
-            <div class="brand-sub">热学科学计算 · 实时实验台</div>
           </div>
         </div>
       </div>
 
+      <h1 class="experiment-title">{{ topic === 'ideal-gas' ? idealModeMeta.label : currentMeta.label }}</h1>
       <div class="topbar-right">
         <a v-if="standalone && hasOverview" class="standalone-mode" href="/" aria-label="回到四专题总览">
           <span class="standalone-mode-label">单专题</span>
@@ -533,13 +521,15 @@
             :aria-label="sceneTitle + '：实时粒子或轨迹动画'"
           ></canvas>
         </div>
-        <div v-if="gasSpeedComparisons.length" class="gas-speed-comparison" aria-label="分子均方根速率同尺度对照">
+        <div v-if="gasSpeedComparisons.length" class="gas-speed-comparison" :class="{ 'motion-paused': paused || prefersReducedMotion }" aria-label="分子均方根速率同程运动对照">
           <div v-for="comparison in gasSpeedComparisons" :key="comparison.label" class="gas-speed-group">
             <div class="gas-speed-heading"><strong>{{ comparison.label }} · 理论均方根速率</strong><span>较 0 °C {{ comparison.change >= 0 ? '+' : '' }}{{ comparison.change.toFixed(1) }}%</span></div>
             <div class="gas-speed-row"><span>0 °C 基准</span><div class="gas-speed-track"><i class="gas-speed-reference" :style="{ width: comparison.reference / comparison.maximum * 100 + '%' }"></i></div><span>{{ comparison.reference.toFixed(1) }} m/s</span></div>
             <div class="gas-speed-row"><span>{{ comparison.temperature.toFixed(0) }} °C 当前</span><div class="gas-speed-track"><i :style="{ width: comparison.current / comparison.maximum * 100 + '%' }"></i></div><span>{{ comparison.current.toFixed(1) }} m/s</span></div>
+            <div class="gas-speed-row"><span>0°C 速率示意</span><div class="gas-speed-race"><i class="gas-speed-reference"></i></div><span>4.00 s/单程</span></div>
+            <div class="gas-speed-row"><span>{{ comparison.temperature.toFixed(0) }}°C 速率示意</span><div class="gas-speed-race"><i :style="{ animationDuration: 4 * comparison.reference / comparison.current + 's' }"></i></div><span>{{ (4 * comparison.reference / comparison.current).toFixed(2) }} s/单程</span></div>
           </div>
-          <p>条长从零开始、同尺比较 · 速率 ∝ √绝对温度 · 动画统一慢放</p>
+          <p>下方往返圆点仅用于比较两种温度的理论均方根速率，不是容器内粒子的运动轨迹。两行距离相同、慢放比例相同；秒数是演示用时，不是分子的实际飞行时间。</p>
         </div>
       </section>
 
@@ -631,6 +621,7 @@
           ></canvas>
         </div>
 
+        <p v-if="topic === 'brownian'" class="control-help">液体温度保持不变：改变花粉质量或液体分子数不会改变理论速率曲线。蓝柱为当前液体分子的瞬时统计，样本越少波动越大，不能将单个分子看作完整分布。横轴展示主要速率区间，区间外样本不重新归一化；柱面积而非柱高表示比例。纵轴仅在柱高超出时扩展。</p>
         <!-- 补充关系图按需展开，避免首次进入时并列展示三张图。 -->
         <details class="ideal-more-charts" v-if="topic === 'ideal-gas' && ideal.experiment_mode !== 'heat-exchange'" @toggle="onIdealExtraToggle">
           <summary>补充关系图 <span>压强、绝对温度与体积、绝对温度</span></summary>
@@ -1761,13 +1752,12 @@
           const history = data.phase_history || [];
           const last = history.length ? history[history.length - 1] : null;
 
-          // 等值线族仅在 T/P/V 变化时重建；状态点/过程线每帧轻量更新
+          // 参数变化只更新数据；实验或坐标范围改变才重建图表。
           const signature = [
             data.process_mode,
             data.chart?.kind,
-            data.temperature_c.toFixed(0),
-            data.pressure_atm.toFixed(2),
-            data.volume_litre.toFixed(4),
+            data.experiment_mode,
+            JSON.stringify(data.chart_ranges),
           ].join("|");
           const rebuild = !planarPvChart || planarSignature !== signature;
           planarSignature = signature;
@@ -1875,9 +1865,11 @@
               },
             }, "planar-vt");
           } else {
-            // 轻量更新：只挪动状态点
+            // 保留图表实例，原位更新理论过程线和当前状态。
             if (planarPvChart && planarPvChart.data.datasets.length) {
               const ds = planarPvChart.data.datasets;
+              const line = ds.find((dataset) => dataset.label === "当前过程");
+              if (line) line.data = processLine;
               ds[ds.length - 1].data = [primaryKind === "pt" ? { x: currentPt.t, y: currentPt.p }
                 : primaryKind === "vt" ? { x: currentPt.t, y: currentPt.v }
                 : { x: currentPt.v, y: currentPt.p }];
@@ -2498,6 +2490,7 @@
           const histPoints = data.speed_hist_v.map((value, i) => ({ x: value, y: data.speed_hist_f[i] }));
           // 理论 2-D 麦克斯韦：f(v) = (v/σ²)·exp(-v²/2σ²)，σ 由液体温度决定
           const sigma = data.liquid_sigma || 1;
+          const densityMax = Math.ceil(Math.max(1 / sigma, ...data.speed_hist_f.map((value) => value * 1.15)) * 2) / 2;
           const theory = data.speed_theory_v.map((value, i) => ({ x: value, y: data.speed_theory_f[i] }));
           if (!componentChart || componentChart._heatTopic !== "brownian-speed") {
             ensureComponentChart({
@@ -2505,7 +2498,7 @@
                 datasets: [
                   {
                     type: "bar",
-                    label: "液体分子样本",
+                    label: "液体分子瞬时样本（少量样本会明显波动）",
                     data: histPoints,
                     backgroundColor: "rgba(96, 170, 255, 0.4)",
                     borderWidth: 0,
@@ -2516,14 +2509,14 @@
                     data: theory,
                     borderColor: COLORS.green,
                     pointRadius: 0,
-                    tension: 0.2,
+                    tension: 0,
                   },
                 ],
               },
               options: {
                 scales: {
-                  x: { ...axisScale("液体分子速率 v（无量纲）"), type: "linear", min: 0, max: 8 * sigma },
-                  y: { ...axisScale("液体分子速率概率密度 f(v)"), min: 0, max: 30 / (8 * sigma) * 1.05 },
+                  x: { ...axisScale("液体分子速率 v（无量纲）"), type: "linear", min: 0, max: 4 * sigma },
+                  y: { ...axisScale("速率概率密度 f(v)（柱面积表示比例）"), min: 0, max: densityMax },
                 },
               },
             }, "brownian-speed");
@@ -2531,6 +2524,10 @@
             updateComponentChart((c) => {
               c.data.datasets[0].data = histPoints;
               c.data.datasets[1].data = theory;
+              // 运行中只扩展纵轴，避免每帧缩放掩盖真实统计波动。
+              c.options.scales.y.max = c._liquidSampleCount === brownian.molecule_count
+                ? Math.max(c.options.scales.y.max, densityMax) : densityMax;
+              c._liquidSampleCount = brownian.molecule_count;
             });
           }
         }
@@ -2652,6 +2649,7 @@
             if (generation !== requestGeneration) return;
             sessionId.value = payload.session_id;
             idealFrame = 0;
+            idealPresentationStates.clear();
             chartDirty = true;
             await bootstrapTopic(true);
           } catch (err) {
@@ -2877,18 +2875,26 @@
           }
         }
 
+        const idealPresentationStates = new Map();
         async function setIdealExperiment(mode) {
+          if (mode === ideal.experiment_mode) return;
           invalidatePendingParams();
           const generation = requestGeneration;
           const previousMode = ideal.experiment_mode;
-          if (mode === "isobaric") ideal.pressure_atm = 1.0;
+          idealPresentationStates.set(previousMode, { paused: paused.value, view: idealChartView.value });
+          paused.value = true;
+          sweep.enabled = false;
           try {
             await ensureSession();
-            const payload = await postJson("/api/live/ideal-gas/set", idealRequestBody(mode));
+            const payload = await postJson("/api/live/ideal-gas/set", { experiment_mode: mode });
             if (generation !== requestGeneration) return;
             ideal.experiment_mode = mode;
             ideal.data = payload.data;
             syncIdealControls(payload.data);
+            if (payload.data.positions) ideal.demo_particle_count = payload.data.positions.length;
+            const presentation = idealPresentationStates.get(mode);
+            paused.value = presentation ? presentation.paused : true;
+            idealChartView.value = presentation ? presentation.view : "pv";
             chartDirty = true;
             planarSignature = "";
             await nextTick();

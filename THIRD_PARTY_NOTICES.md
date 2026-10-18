@@ -39,6 +39,14 @@ browser at runtime, so a demo machine needs network access for the full UI.
 | `ricbencar/galton-board-statistics` | 伽尔顿板「精确 Bernoulli 路径 + 平滑轨迹插值 + 落槽堆积」的呈现思路 |
 | `clrsims/2d-brownian-motion` | 轨迹渐隐残影等视觉呈现思路 |
 
+## Tongji University emblem
+
+`src/heatlab/web/static/tongji.svg` is a user-provided Tongji University emblem.
+The display asset removes the original offset shadow and crops the viewport to
+center the emblem. Its inclusion does not grant trademark rights or imply
+university endorsement. No upstream asset license was supplied; confirm usage
+permission before redistribution outside the intended educational platform.
+
 ## Bundled font
 
 | File | Role |

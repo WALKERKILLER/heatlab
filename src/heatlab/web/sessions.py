@@ -36,6 +36,7 @@ class LiveSession:
     seed: int
     session_id: str = field(default_factory=lambda: uuid4().hex)
     ideal: IdealGasModel = field(init=False)
+    _ideal_experiments: dict[str, IdealGasModel] = field(default_factory=dict, init=False)
     heat_exchange: HeatExchangeModel = field(init=False)
     ideal_experiment_mode: str = field(default="free", init=False)
     brownian: BrownianModel = field(init=False)
@@ -61,6 +62,7 @@ class LiveSession:
             self.seed = int(seed)
         manager = RandomManager(self.seed)
         self.ideal = IdealGasModel(manager.stream("ideal-gas"))
+        self._ideal_experiments = {"free": self.ideal}
         self.heat_exchange = HeatExchangeModel(manager.stream("ideal-gas-heat-exchange"))
         self.ideal_experiment_mode = "free"
         self.brownian = BrownianModel(manager.stream("brownian"))
@@ -90,6 +92,23 @@ class LiveSession:
         temperature_right_c: float | None = None,
     ) -> None:
         mode = experiment_mode or process_mode or self.ideal_experiment_mode
+        if mode not in IdealGasModel.SINGLE_EXPERIMENTS and mode != "heat-exchange":
+            raise ValueError("unsupported ideal-gas experiment mode")
+        switching = mode != self.ideal_experiment_mode
+        if switching and mode != "heat-exchange":
+            if mode not in self._ideal_experiments:
+                model = IdealGasModel(RandomManager(self.seed).stream(f"ideal-gas-{mode}"))
+                if mode in IdealGasModel.SINGLE_EXPERIMENTS:
+                    model.configure_experiment(mode, demo_particle_count=60)
+                self._ideal_experiments[mode] = model
+            self.ideal = self._ideal_experiments[mode]
+            self._ideal_geometry_signature = ""
+        if switching and experiment_mode is not None and all(value is None for value in (
+            temperature_c, process_mode, volume_litre, demo_particle_count,
+            barrier, temperature_left_c, temperature_right_c,
+        )):
+            self.ideal_experiment_mode = mode
+            return
         if mode == "heat-exchange":
             self.heat_exchange.configure(
                 barrier=barrier,
@@ -97,9 +116,6 @@ class LiveSession:
                 temperature_right_c=temperature_right_c,
                 demo_particle_count=demo_particle_count,
             )
-            self.ideal.experiment_mode = "heat-exchange"
-            self.ideal.work_by_gas_j = 0.0
-            self.ideal.heat_added_j = 0.0
             self.ideal_experiment_mode = mode
             return
         self.ideal_experiment_mode = mode
