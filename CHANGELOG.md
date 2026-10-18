@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### Planned
+- Web 会话可换 Redis 以支持多进程部署
+- 可选 WebSocket 推流，降低高频 step 轮询
+- 桌面与 Web 统一可调动画步长
+
+## [0.3.2] - 2026-10-18
+
 ### Changed
 
 - Web 页左上角使用同济大学校徽与平台名称，顶部中央显示当前实验名称。校徽采用圆形白底，同时用作浏览器标签页图标。
@@ -15,10 +22,7 @@
 - 热力学各小实验分别保存模型、粒子位置、过程历史和能量账本，避免切换实验时继承其他实验的参数。暂停状态与主图选择也分别保存。
 - 热力学 2D 图保留图表实例，参数变化时原位更新过程曲线和状态点，减少反复重建产生的跳变。
 
-### Planned
-- Web 会话可换 Redis 以支持多进程部署
-- 可选 WebSocket 推流，降低高频 step 轮询
-- 桌面与 Web 统一可调动画步长
+- 气体粒子使用固定参考热速率进行显示缩放，保留温度对速率的影响；修复容器反射、相图范围与两室温度历史显示。
 
 ## [0.3.1] - 2026-09-24
 
@@ -82,7 +86,8 @@
 - 单元测试、数值验证脚本与示例输出图
 - MIT 许可证与第三方声明
 
-[Unreleased]: https://github.com/WALKERKILLER/heatlab/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/WALKERKILLER/heatlab/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/WALKERKILLER/heatlab/releases/tag/v0.3.2
 [0.3.1]: https://github.com/WALKERKILLER/heatlab/releases/tag/v0.3.1
 [0.3.0]: https://github.com/WALKERKILLER/heatlab/releases/tag/v0.3.0
 [0.2.0]: https://github.com/WALKERKILLER/heatlab/releases/tag/v0.2.0
